@@ -3,13 +3,9 @@
 import { useState } from "react";
 import Topbar from "./Topbar";
 import AuthModal from "./AuthModal";
-import { AuthProvider } from "./AuthContext";
+import AuthProvider from "./AuthContext";
 
-export default function ClientShell({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function ClientShell({ children }: { children: React.ReactNode }) {
   const [authOpen, setAuthOpen] = useState(false);
 
   return (
