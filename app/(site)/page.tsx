@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import SiteShell from "@/components/Site/SiteShell";
 import { db } from "@/lib/firebase";
@@ -54,8 +55,9 @@ export default function HomePage() {
         id: song.id,
         title: song.title || "Untitled Song",
         artist: song.artist || "Unknown Artist",
-        coverURL: song.coverURL || "/default-cover.jpg",
-        audioURL: song.audioURL || "",
+        genre: song.genre || "Gospel",
+        coverUrl: song.coverURL || "/default-cover.jpg",
+        audioUrl: song.audioURL || "",
       }));
   }, [songs]);
 
@@ -76,7 +78,6 @@ export default function HomePage() {
   return (
     <SiteShell title="Home" showTitle={false}>
       <div className="space-y-6 md:space-y-8">
-        {/* HERO */}
         <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-fuchsia-600/20 via-purple-600/10 to-pink-600/10 p-5 md:p-8">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(217,70,239,0.20),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(168,85,247,0.16),transparent_30%)]" />
           <div className="absolute -top-20 right-0 h-56 w-56 rounded-full bg-fuchsia-500/20 blur-3xl" />
@@ -84,7 +85,7 @@ export default function HomePage() {
 
           <div className="relative grid items-center gap-6 lg:grid-cols-[1.15fr_0.85fr]">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-1 text-[11px] md:text-xs text-fuchsia-300">
+              <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-1 text-[11px] text-fuchsia-300 md:text-xs">
                 <span className="h-2 w-2 rounded-full bg-fuchsia-400 shadow-[0_0_12px_rgba(217,70,239,0.95)] animate-pulse" />
                 Zambia Gospel Music Streaming
               </div>
@@ -100,23 +101,22 @@ export default function HomePage() {
               </p>
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                <a
+                <Link
                   href="/upload"
                   className="inline-flex items-center justify-center rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-500"
                 >
                   Upload Your Song
-                </a>
+                </Link>
 
-                <a
+                <Link
                   href="/browse"
                   className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
                   Browse Music
-                </a>
+                </Link>
               </div>
             </div>
 
-            {/* FEATURED CARD */}
             <div className="rounded-3xl border border-white/10 bg-black/30 p-4 backdrop-blur-xl">
               <div className="mb-4 flex items-center justify-between">
                 <div className="text-sm font-semibold text-white">
@@ -166,7 +166,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* STATS */}
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
             <div className="text-xs uppercase tracking-[0.2em] text-white/40">
@@ -196,7 +195,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* LATEST UPLOADS */}
         <section>
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -216,7 +214,7 @@ export default function HomePage() {
               No songs uploaded yet. Your first upload will appear here.
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {songs.map((song) => (
                 <div
                   key={song.id}
@@ -226,7 +224,7 @@ export default function HomePage() {
                     <img
                       src={song.coverURL || "/default-cover.jpg"}
                       alt={song.title || "Song cover"}
-                      className="h-52 w-full object-cover sm:h-56"
+                      className="h-40 w-full object-cover sm:h-52"
                     />
 
                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-80" />
@@ -242,7 +240,7 @@ export default function HomePage() {
                   </div>
 
                   <div className="p-4">
-                    <div className="truncate text-lg font-semibold text-white">
+                    <div className="truncate text-base font-semibold text-white md:text-lg">
                       {song.title || "Untitled Song"}
                     </div>
 
