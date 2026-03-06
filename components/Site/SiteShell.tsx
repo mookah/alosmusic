@@ -22,17 +22,23 @@ export default function SiteShell({
     <main className="min-h-screen bg-black text-white flex flex-col">
       <Topbar onAuth={() => setAuthOpen(true)} />
 
-      <div className="mx-auto max-w-[1400px] flex flex-1 w-full">
-        <Sidebar onAuth={() => setAuthOpen(true)} />
+      <div className="mx-auto flex w-full max-w-[1400px] flex-1">
+        {/* Desktop sidebar only */}
+        <div className="hidden md:block">
+          <Sidebar onAuth={() => setAuthOpen(true)} />
+        </div>
 
-        <section className="flex-1 min-w-0 px-5 py-6 flex flex-col">
+        <section className="flex min-w-0 flex-1 flex-col px-4 py-4 sm:px-5 md:px-6 md:py-6 lg:px-8">
           {showTitle && (
-            <div className="mb-5 flex items-center justify-between">
-              <h1 className="text-xl md:text-2xl font-semibold">{title}</h1>
+            <div className="mb-4 flex items-center justify-between md:mb-5">
+              <h1 className="text-lg font-semibold sm:text-xl md:text-2xl">
+                {title}
+              </h1>
             </div>
           )}
 
-          <div className="flex-1">{children}</div>
+          {/* extra bottom padding so player does not cover content */}
+          <div className="flex-1 pb-28 md:pb-32">{children}</div>
 
           <SiteFooter />
         </section>
@@ -40,7 +46,7 @@ export default function SiteShell({
 
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
 
-      {/* ✅ Global player for ALL pages */}
+      {/* Global player for ALL pages */}
       <BottomPlayer />
     </main>
   );

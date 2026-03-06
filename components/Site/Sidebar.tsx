@@ -16,7 +16,7 @@ export default function Sidebar({ onAuth }: { onAuth: () => void }) {
 
   return (
     <aside className="hidden md:block w-[260px] shrink-0 border-r border-white/10 px-4 py-6">
-      <div className="text-xs text-white/50 mb-3">Menu</div>
+      <div className="mb-3 text-xs text-white/50">Menu</div>
 
       <div className="space-y-1">
         <Link className={item("/browse")} href="/browse">
@@ -34,12 +34,15 @@ export default function Sidebar({ onAuth }: { onAuth: () => void }) {
         <Link className={item("/charts")} href="/charts">
           Charts
         </Link>
+        <Link className={item("/profile")} href="/profile">
+          My Profile
+        </Link>
       </div>
 
-      <div className="mt-6 pt-6 border-t border-white/10">
+      <div className="mt-6 border-t border-white/10 pt-6">
         <button
           onClick={onAuth}
-          className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium hover:bg-white/10 transition"
+          className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium transition hover:bg-white/10"
         >
           Login / Admin
         </button>
@@ -48,7 +51,6 @@ export default function Sidebar({ onAuth }: { onAuth: () => void }) {
           Admins approve uploads before publishing.
         </div>
 
-        {/* ✅ LIVE CONCERT (bottom-left under Login/Admin) */}
         <LiveConcert />
       </div>
     </aside>

@@ -7,12 +7,12 @@ import LogoMark from "./LogoMark";
 export default function Topbar({ onAuth }: { onAuth: () => void }) {
   const pathname = usePathname();
 
-  // Logo animation per page
   let variant: "calm" | "active" | "equalizer" = "active";
 
   if (pathname === "/") variant = "equalizer";
   if (pathname === "/browse") variant = "active";
   if (pathname === "/upload") variant = "active";
+  if (pathname === "/profile") variant = "active";
 
   const navItem = (href: string, label: string) => {
     const active = pathname === href;
@@ -32,7 +32,6 @@ export default function Topbar({ onAuth }: { onAuth: () => void }) {
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-black/60 backdrop-blur">
       <div className="mx-auto flex max-w-[1400px] items-center justify-between px-4 py-3">
-        {/* Left side */}
         <div className="flex items-center gap-3">
           <LogoMark href="/" size={44} variant={variant} />
           <div>
@@ -43,17 +42,16 @@ export default function Topbar({ onAuth }: { onAuth: () => void }) {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="hidden items-center gap-6 md:flex">
           {navItem("/", "Home")}
           {navItem("/browse", "Browse")}
+          {navItem("/profile", "Profile")}
         </nav>
 
-        {/* Right actions */}
         <div className="flex items-center gap-3">
           <Link
             href="/upload"
-            className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold transition hover:bg-purple-500"
+            className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold shadow-lg shadow-purple-600/30 transition hover:bg-purple-500"
           >
             Upload
           </Link>

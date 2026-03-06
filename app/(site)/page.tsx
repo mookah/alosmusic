@@ -1,103 +1,273 @@
-import Link from "next/link";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import SiteShell from "@/components/Site/SiteShell";
-import HotlistRow from "@/components/songs/HotlistRow";
-import { getApprovedSongs, getTrendingSongs } from "@/lib/getSongs";
+import { db } from "@/lib/firebase";
+import { setNowPlaying, setQueue, Track } from "@/lib/playerStore";
 
-function SectionHeader({
-  title,
-  href = "/browse",
-}: {
-  title: string;
-  href?: string;
-}) {
+type SongDoc = {
+  id: string;
+  title?: string;
+  artist?: string;
+  genre?: string;
+  coverURL?: string;
+  audioURL?: string;
+  streams?: number;
+};
+
+export default function HomePage() {
+  const [songs, setSongs] = useState<SongDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadSongs() {
+      try {
+        const q = query(
+          collection(db, "songs"),
+          orderBy("createdAt", "desc"),
+          limit(12)
+        );
+
+        const snap = await getDocs(q);
+
+        const list = snap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as SongDoc[];
+
+        setSongs(list);
+      } catch (error) {
+        console.error("Failed to load songs:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadSongs();
+  }, []);
+
+  const playableTracks = useMemo<Track[]>(() => {
+    return songs
+      .filter((song) => !!song.audioURL)
+      .map((song) => ({
+        id: song.id,
+        title: song.title || "Untitled Song",
+        artist: song.artist || "Unknown Artist",
+        coverURL: song.coverURL || "/default-cover.jpg",
+        audioURL: song.audioURL || "",
+      }));
+  }, [songs]);
+
+  function handlePlay(songId: string) {
+    const index = playableTracks.findIndex((track) => track.id === songId);
+    if (index === -1) return;
+
+    setQueue(playableTracks, index);
+    setNowPlaying(playableTracks[index]);
+  }
+
+  const featuredSong = songs[0];
+
+  const totalArtists = new Set(
+    songs.map((song) => (song.artist || "Unknown Artist").trim())
+  ).size;
+
   return (
-    <div className="mt-8 flex items-center justify-between">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <Link href={href} className="text-sm text-white/70 hover:text-white">
-        View all
-      </Link>
-    </div>
-  );
-}
+    <SiteShell title="Home" showTitle={false}>
+      <div className="space-y-6 md:space-y-8">
+        {/* HERO */}
+        <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-fuchsia-600/20 via-purple-600/10 to-pink-600/10 p-5 md:p-8">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(217,70,239,0.20),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(168,85,247,0.16),transparent_30%)]" />
+          <div className="absolute -top-20 right-0 h-56 w-56 rounded-full bg-fuchsia-500/20 blur-3xl" />
+          <div className="absolute -bottom-20 left-0 h-56 w-56 rounded-full bg-purple-500/20 blur-3xl" />
 
-export default async function HomePage() {
-  const hotlist = await getApprovedSongs(10);
-  const trending = await getTrendingSongs(10);
+          <div className="relative grid items-center gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-1 text-[11px] md:text-xs text-fuchsia-300">
+                <span className="h-2 w-2 rounded-full bg-fuchsia-400 shadow-[0_0_12px_rgba(217,70,239,0.95)] animate-pulse" />
+                Zambia Gospel Music Streaming
+              </div>
 
-  return (
-    <SiteShell title="" showTitle={false}>
-      <div className="mb-6 flex items-center gap-4">
-        <div className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <input
-              placeholder="Search artists, songs, albums..."
-              className="w-full bg-transparent text-sm text-white placeholder:text-white/40 outline-none"
-            />
-            <div className="text-xs text-white/40">⌘K</div>
+              <h1 className="mt-4 max-w-3xl text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl md:text-5xl xl:text-6xl">
+                Discover, upload and stream powerful gospel music
+              </h1>
+
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-white/70 md:text-base">
+                ALOSMUSIC is your home for gospel, worship and praise. Stream the
+                latest sounds, support artists, and grow a strong Zambia gospel
+                music community.
+              </p>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <a
+                  href="/upload"
+                  className="inline-flex items-center justify-center rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-500"
+                >
+                  Upload Your Song
+                </a>
+
+                <a
+                  href="/browse"
+                  className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  Browse Music
+                </a>
+              </div>
+            </div>
+
+            {/* FEATURED CARD */}
+            <div className="rounded-3xl border border-white/10 bg-black/30 p-4 backdrop-blur-xl">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="text-sm font-semibold text-white">
+                  Featured Release
+                </div>
+                <div className="rounded-full border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-1 text-[11px] text-fuchsia-300">
+                  Spotlight
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+                <img
+                  src={featuredSong?.coverURL || "/default-cover.jpg"}
+                  alt={featuredSong?.title || "Featured song"}
+                  className="h-56 w-full object-cover sm:h-64"
+                />
+
+                <div className="p-4">
+                  <div className="truncate text-lg font-semibold text-white">
+                    {featuredSong?.title || "No songs uploaded yet"}
+                  </div>
+
+                  <div className="mt-1 truncate text-sm text-white/60">
+                    {featuredSong?.artist || "Upload your first song to feature it here"}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between text-xs text-white/45">
+                    <span>{featuredSong?.genre || "Gospel"}</span>
+                    <span>
+                      {typeof featuredSong?.streams === "number"
+                        ? `${featuredSong.streams} streams`
+                        : "Fresh upload"}
+                    </span>
+                  </div>
+
+                  {featuredSong?.audioURL && (
+                    <button
+                      onClick={() => handlePlay(featuredSong.id)}
+                      className="mt-4 w-full rounded-2xl bg-purple-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-purple-500"
+                    >
+                      ▶ Play Now
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <button className="hidden md:inline-flex rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium hover:bg-white/10 transition">
-          Download
-        </button>
+        {/* STATS */}
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="text-xs uppercase tracking-[0.2em] text-white/40">
+              Songs
+            </div>
+            <div className="mt-3 text-3xl font-bold text-white">{songs.length}</div>
+            <div className="mt-1 text-sm text-white/55">Latest uploaded tracks</div>
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="text-xs uppercase tracking-[0.2em] text-white/40">
+              Artists
+            </div>
+            <div className="mt-3 text-3xl font-bold text-white">{totalArtists}</div>
+            <div className="mt-1 text-sm text-white/55">Artists represented here</div>
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:col-span-2 xl:col-span-1">
+            <div className="text-xs uppercase tracking-[0.2em] text-white/40">
+              Platform
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-3xl font-bold text-white">
+              LIVE
+              <span className="h-3 w-3 rounded-full bg-fuchsia-400 shadow-[0_0_14px_rgba(217,70,239,0.95)] animate-pulse" />
+            </div>
+            <div className="mt-1 text-sm text-white/55">Upload, stream and grow</div>
+          </div>
+        </section>
+
+        {/* LATEST UPLOADS */}
+        <section>
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-white">Latest Uploads</h2>
+              <p className="mt-1 text-sm text-white/55">
+                Fresh gospel sounds from your platform
+              </p>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-white/60">
+              Loading songs...
+            </div>
+          ) : songs.length === 0 ? (
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-white/60">
+              No songs uploaded yet. Your first upload will appear here.
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {songs.map((song) => (
+                <div
+                  key={song.id}
+                  className="group overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] transition hover:border-fuchsia-500/30 hover:bg-white/[0.05]"
+                >
+                  <div className="relative">
+                    <img
+                      src={song.coverURL || "/default-cover.jpg"}
+                      alt={song.title || "Song cover"}
+                      className="h-52 w-full object-cover sm:h-56"
+                    />
+
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-80" />
+
+                    {song.audioURL && (
+                      <button
+                        onClick={() => handlePlay(song.id)}
+                        className="absolute bottom-3 right-3 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-fuchsia-600"
+                      >
+                        ▶ Play
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="p-4">
+                    <div className="truncate text-lg font-semibold text-white">
+                      {song.title || "Untitled Song"}
+                    </div>
+
+                    <div className="mt-1 truncate text-sm text-white/60">
+                      {song.artist || "Unknown Artist"}
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <span className="truncate rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs text-white/60">
+                        {song.genre || "Gospel"}
+                      </span>
+
+                      <span className="shrink-0 text-xs text-white/40">
+                        {typeof song.streams === "number"
+                          ? `${song.streams} streams`
+                          : "New"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
-
-      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5">
-        <div
-          className="absolute inset-0 opacity-60"
-          style={{
-            backgroundImage:
-              "url('https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=1600&q=80')",
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-          }}
-        />
-        <div className="absolute inset-0 bg-black/55" />
-
-        <div className="relative p-8 md:p-12">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs text-white/70">
-            🎧 Gospel Music Platform
-          </div>
-
-          <h1 className="mt-5 text-4xl md:text-6xl font-extrabold leading-tight">
-            Upload & share your music
-          </h1>
-
-          <p className="mt-3 text-white/70">
-            Discover Zambia gospel sounds, worship moments, and live praise.
-          </p>
-
-          <div className="mt-7 flex items-center gap-3">
-            <Link
-              href="/browse"
-              className="rounded-2xl bg-purple-600 px-6 py-3 text-sm font-semibold hover:bg-purple-500 transition"
-            >
-              Browse Music
-            </Link>
-
-            <Link
-              href="/upload"
-              className="rounded-2xl border border-white/15 bg-white/5 px-6 py-3 text-sm font-semibold hover:bg-white/10 transition"
-            >
-              Upload a Song
-            </Link>
-          </div>
-
-          <div className="mt-10 flex items-center justify-end gap-2">
-            <span className="h-2 w-2 rounded-full bg-white/30" />
-            <span className="h-2 w-2 rounded-full bg-white/30" />
-            <span className="h-2 w-2 rounded-full bg-white/80" />
-          </div>
-        </div>
-      </div>
-
-      <SectionHeader title="Hotlist" />
-      <HotlistRow tracks={hotlist} />
-
-      <SectionHeader title="Trending Now" />
-      <HotlistRow tracks={trending} />
-
-      <div className="pb-24" />
     </SiteShell>
   );
 }

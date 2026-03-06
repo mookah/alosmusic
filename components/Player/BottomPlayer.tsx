@@ -21,10 +21,7 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-/** ✅ ONE global audio element */
 let GLOBAL_AUDIO: HTMLAudioElement | null = null;
-
-/** ✅ ONE global WebAudio chain (safe across hot reload) */
 let GLOBAL_CTX: AudioContext | null = null;
 let GLOBAL_ANALYSER: AnalyserNode | null = null;
 let GLOBAL_SRC: MediaElementAudioSourceNode | null = null;
@@ -60,7 +57,6 @@ export default function BottomPlayer() {
     return Math.max(0, Math.min(100, (t / d) * 100));
   }, [currentTime, duration, seeking, seekPreview]);
 
-  // ✅ Safe analyser attach (prevents "already connected" crash)
   async function ensureAudioGraph() {
     const a = audioRef.current;
     if (!a) return false;
@@ -74,6 +70,7 @@ export default function BottomPlayer() {
         await GLOBAL_CTX.resume();
       } catch {}
     }
+
     if (GLOBAL_CTX.state !== "running") return false;
 
     if (!GLOBAL_ANALYSER) {
@@ -82,10 +79,8 @@ export default function BottomPlayer() {
       GLOBAL_ANALYSER.smoothingTimeConstant = 0.85;
     }
 
-    // already attached to this audio element
     if (GLOBAL_SRC && GLOBAL_ATTACHED_AUDIO === a) return true;
 
-    // hot reload: attached to older audio element -> rebuild graph
     if (GLOBAL_ATTACHED_AUDIO && GLOBAL_ATTACHED_AUDIO !== a) {
       try {
         GLOBAL_SRC?.disconnect();
@@ -93,10 +88,10 @@ export default function BottomPlayer() {
       try {
         GLOBAL_ANALYSER?.disconnect();
       } catch {}
+
       GLOBAL_SRC = null;
       GLOBAL_ATTACHED_AUDIO = null;
 
-      // re-create analyser after disconnect for safety
       GLOBAL_ANALYSER = GLOBAL_CTX.createAnalyser();
       GLOBAL_ANALYSER.fftSize = 1024;
       GLOBAL_ANALYSER.smoothingTimeConstant = 0.85;
@@ -115,16 +110,15 @@ export default function BottomPlayer() {
     }
   }
 
-  // ✅ init global audio + restore FULL player state + subscribe
   useEffect(() => {
     if (!GLOBAL_AUDIO) {
       GLOBAL_AUDIO = new Audio();
       GLOBAL_AUDIO.preload = "metadata";
     }
+
     const a = GLOBAL_AUDIO;
     audioRef.current = a;
 
-    // restore saved UI (important: seek + cover + effect stays on page change)
     const snap = restorePlayerFromStorage();
     setTrack(snap.track);
     setIsPlaying(!!snap.isPlaying);
@@ -136,20 +130,22 @@ export default function BottomPlayer() {
     a.volume = typeof snap.volume === "number" ? snap.volume : 0.85;
     a.muted = !!snap.muted;
 
-    // sync audio events -> store
     const onPlay = () => {
       setIsPlaying(true);
       updatePlayback({ isPlaying: true });
     };
+
     const onPause = () => {
       setIsPlaying(false);
       updatePlayback({ isPlaying: false });
     };
+
     const onLoaded = () => {
       const d = a.duration || 0;
       setDuration(d);
       updatePlayback({ duration: d });
     };
+
     const onTime = () => {
       const t = a.currentTime || 0;
       if (!seeking) setCurrentTime(t);
@@ -161,7 +157,6 @@ export default function BottomPlayer() {
     a.addEventListener("loadedmetadata", onLoaded);
     a.addEventListener("timeupdate", onTime);
 
-    // subscribe to store changes
     const unsub = subscribePlayer((s) => {
       setTrack(s.track);
       setVisible(true);
@@ -179,10 +174,8 @@ export default function BottomPlayer() {
       a.removeEventListener("timeupdate", onTime);
       unsub();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [seeking]);
 
-  // ✅ count play once per track when playback starts
   useEffect(() => {
     if (!track?.id || !isPlaying) return;
     if (countedPlayRef.current === track.id) return;
@@ -191,7 +184,6 @@ export default function BottomPlayer() {
     incrementSongPlays(track.id);
   }, [track?.id, isPlaying]);
 
-  // volume sync (+ persist)
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
@@ -206,7 +198,6 @@ export default function BottomPlayer() {
     updatePlayback({ muted });
   }, [muted]);
 
-  // reactive EQ loop (seek-top EQ)
   useEffect(() => {
     const tick = () => {
       if (!GLOBAL_ANALYSER) {
@@ -228,10 +219,12 @@ export default function BottomPlayer() {
         const end = Math.floor(((i + 1) / BAR_COUNT) * n);
         let sum = 0;
         let count = 0;
+
         for (let j = start; j < end; j++) {
           sum += freq[j] || 0;
           count++;
         }
+
         const avg = count ? sum / count : 0;
         const v = clamp01((avg / 255) * 1.15);
         next.push(0.12 + v * 0.88);
@@ -255,7 +248,6 @@ export default function BottomPlayer() {
     };
   }, [isPlaying]);
 
-  // load track
   useEffect(() => {
     const a = audioRef.current;
     if (!a || !track?.audioUrl) return;
@@ -264,7 +256,6 @@ export default function BottomPlayer() {
 
     a.src = track.audioUrl;
 
-    // restore from store (so seek does NOT reset on page change)
     const s = restorePlayerFromStorage();
     const startAt = s.track?.audioUrl === track.audioUrl ? s.currentTime : 0;
 
@@ -275,27 +266,34 @@ export default function BottomPlayer() {
     a.play().catch(() => setIsPlaying(false));
   }, [track?.audioUrl]);
 
-  // listen for play events from pages
   useEffect(() => {
-    const handler = (e: any) => {
-      const t = e?.detail as Track;
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent<Track>;
+      const t = customEvent.detail;
+
       if (!t?.audioUrl) return;
 
       setNowPlaying(t);
-      updatePlayback({ track: t, isPlaying: true, currentTime: 0, duration: 0 });
+      updatePlayback({
+        track: t,
+        isPlaying: true,
+        currentTime: 0,
+        duration: 0,
+      });
 
       setTrack(t);
       setVisible(true);
     };
 
-    window.addEventListener("alos:play", handler as any);
-    return () => window.removeEventListener("alos:play", handler as any);
+    window.addEventListener("alos:play", handler as EventListener);
+    return () => window.removeEventListener("alos:play", handler as EventListener);
   }, []);
 
   const play = async () => {
     await ensureAudioGraph();
     const a = audioRef.current;
     if (!a) return;
+
     try {
       await a.play();
     } catch {}
@@ -314,9 +312,16 @@ export default function BottomPlayer() {
       a.currentTime = 0;
       a.src = "";
     }
+
     countedPlayRef.current = null;
     setNowPlaying(null);
-    updatePlayback({ track: null, isPlaying: false, currentTime: 0, duration: 0 });
+    updatePlayback({
+      track: null,
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+    });
+
     setTrack(null);
     setIsPlaying(false);
     setCurrentTime(0);
@@ -327,6 +332,7 @@ export default function BottomPlayer() {
   const seekTo = (t: number) => {
     const a = audioRef.current;
     if (!a || !duration) return;
+
     a.currentTime = Math.max(0, Math.min(duration, t));
     setCurrentTime(a.currentTime);
     updatePlayback({ currentTime: a.currentTime });
@@ -340,7 +346,6 @@ export default function BottomPlayer() {
     <div className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 bg-black/75 backdrop-blur">
       <div className="mx-auto max-w-[1400px] px-4 py-3">
         <div className="flex items-center gap-4">
-          {/* ✅ COVER with premium glow */}
           <div className="relative shrink-0">
             {showPremium && (
               <>
@@ -374,32 +379,40 @@ export default function BottomPlayer() {
               </>
             )}
 
-            <div className="h-12 w-12 rounded-xl overflow-hidden border border-white/10 bg-white/5">
+            <div className="h-12 w-12 overflow-hidden rounded-xl border border-white/10 bg-white/5">
               {track?.coverUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={track.coverUrl} alt={track.title} className="h-full w-full object-cover" />
+                <img
+                  src={track.coverUrl}
+                  alt={track.title}
+                  className="h-full w-full object-cover"
+                />
               ) : (
-                <div className="h-full w-full grid place-items-center text-white/30 text-xs">♪</div>
+                <div className="grid h-full w-full place-items-center text-xs text-white/30">
+                  ♪
+                </div>
               )}
             </div>
           </div>
 
-          {/* info + seek */}
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold truncate">{track?.title || "Select a song"}</div>
-            <div className="text-xs text-white/60 truncate">
-              {track ? `${track.artist}${track.genre ? ` • ${track.genre}` : ""}` : "Go to Browse and click Play"}
+            <div className="truncate text-sm font-semibold">
+              {track?.title || "Select a song"}
+            </div>
+
+            <div className="truncate text-xs text-white/60">
+              {track
+                ? `${track.artist}${track.genre ? ` • ${track.genre}` : ""}`
+                : "Go to Browse and click Play"}
             </div>
 
             <div className="mt-2 flex items-center gap-3">
-              <div className="text-[11px] text-white/50 w-10 text-right">
+              <div className="w-10 text-right text-[11px] text-white/50">
                 {fmtTime(seeking ? seekPreview : currentTime)}
               </div>
 
               <div className="relative flex-1 overflow-visible">
-                {/* EQ strip ABOVE seek line */}
                 <div className="pointer-events-none absolute -top-6 left-0 right-0 h-6">
-                  <div className="flex items-end gap-[2px] h-full">
+                  <div className="flex h-full items-end gap-[2px]">
                     {levels.map((lv, i) => (
                       <span
                         key={i}
@@ -410,7 +423,9 @@ export default function BottomPlayer() {
                             "linear-gradient(180deg, rgba(236,72,153,.95), rgba(168,85,247,.95), rgba(59,130,246,.95))",
                           opacity: i / levels.length <= progressPct / 100 ? 1 : 0.22,
                           boxShadow:
-                            i / levels.length <= progressPct / 100 ? "0 0 14px rgba(168,85,247,.22)" : "none",
+                            i / levels.length <= progressPct / 100
+                              ? "0 0 14px rgba(168,85,247,.22)"
+                              : "none",
                           filter: "saturate(1.2) brightness(1.05)",
                         }}
                       />
@@ -418,19 +433,22 @@ export default function BottomPlayer() {
                   </div>
                 </div>
 
-                {/* seek line */}
                 <div
-                  className="relative h-2 rounded-full bg-white/10 overflow-hidden cursor-pointer"
+                  className="relative h-2 cursor-pointer overflow-hidden rounded-full bg-white/10"
                   onMouseDown={(e) => {
                     if (!duration) return;
                     setSeeking(true);
-                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const rect = (
+                      e.currentTarget as HTMLDivElement
+                    ).getBoundingClientRect();
                     const pct = (e.clientX - rect.left) / rect.width;
                     setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
                   }}
                   onMouseMove={(e) => {
                     if (!seeking || !duration) return;
-                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const rect = (
+                      e.currentTarget as HTMLDivElement
+                    ).getBoundingClientRect();
                     const pct = (e.clientX - rect.left) / rect.width;
                     setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
                   }}
@@ -446,27 +464,25 @@ export default function BottomPlayer() {
                     style={{ width: `${progressPct}%` }}
                   />
                   <div
-                    className="absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-white shadow-[0_0_18px_rgba(168,85,247,.8)]"
+                    className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow-[0_0_18px_rgba(168,85,247,.8)]"
                     style={{ left: `calc(${progressPct}% - 6px)` }}
                   />
                 </div>
               </div>
 
-              <div className="text-[11px] text-white/50 w-10">{fmtTime(duration)}</div>
+              <div className="w-10 text-[11px] text-white/50">{fmtTime(duration)}</div>
             </div>
           </div>
 
-          {/* controls */}
           <div className="flex items-center gap-2">
-            {/* ✅ Play/Pause with equalizer inside */}
             {isPlaying ? (
               <button
                 onClick={pause}
-                className="relative rounded-xl bg-purple-600 px-5 py-2 text-sm font-semibold hover:bg-purple-500 overflow-hidden"
+                className="relative overflow-hidden rounded-xl bg-purple-600 px-5 py-2 text-sm font-semibold hover:bg-purple-500"
               >
                 <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
                 <span className="relative inline-flex items-center gap-2">
-                  <span className="inline-flex items-end gap-[2px] h-4">
+                  <span className="inline-flex h-4 items-end gap-[2px]">
                     <span className="alosBtnBar alosBtnBar1" />
                     <span className="alosBtnBar alosBtnBar2" />
                     <span className="alosBtnBar alosBtnBar3" />
@@ -478,11 +494,11 @@ export default function BottomPlayer() {
             ) : (
               <button
                 onClick={play}
-                className="relative rounded-xl bg-purple-600 px-5 py-2 text-sm font-semibold hover:bg-purple-500 overflow-hidden"
+                className="relative overflow-hidden rounded-xl bg-purple-600 px-5 py-2 text-sm font-semibold hover:bg-purple-500"
               >
                 <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
                 <span className="relative inline-flex items-center gap-2">
-                  <span className="inline-flex items-end gap-[2px] h-4 opacity-80">
+                  <span className="inline-flex h-4 items-end gap-[2px] opacity-80">
                     <span className="alosBtnBar alosBtnBar1" />
                     <span className="alosBtnBar alosBtnBar2" />
                     <span className="alosBtnBar alosBtnBar3" />
@@ -493,7 +509,7 @@ export default function BottomPlayer() {
               </button>
             )}
 
-            <div className="hidden md:flex items-center gap-2 ml-3">
+            <div className="ml-3 hidden items-center gap-2 md:flex">
               <button
                 onClick={() => setMuted((m) => !m)}
                 className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
@@ -519,7 +535,7 @@ export default function BottomPlayer() {
 
             <button
               onClick={close}
-              className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 ml-1"
+              className="ml-1 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
               title="Close"
             >
               ✕
@@ -528,35 +544,83 @@ export default function BottomPlayer() {
         </div>
       </div>
 
-      {/* ✅ Premium animations */}
       <style jsx global>{`
         @keyframes alosGlow {
-          0% { transform: scale(0.98); opacity: 0.55; }
-          50% { transform: scale(1.04); opacity: 0.85; }
-          100% { transform: scale(0.98); opacity: 0.55; }
+          0% {
+            transform: scale(0.98);
+            opacity: 0.55;
+          }
+          50% {
+            transform: scale(1.04);
+            opacity: 0.85;
+          }
+          100% {
+            transform: scale(0.98);
+            opacity: 0.55;
+          }
         }
+
         @keyframes alosRing {
-          0% { transform: rotate(0deg); opacity: 0.25; }
-          50% { opacity: 0.45; }
-          100% { transform: rotate(360deg); opacity: 0.25; }
+          0% {
+            transform: rotate(0deg);
+            opacity: 0.25;
+          }
+          50% {
+            opacity: 0.45;
+          }
+          100% {
+            transform: rotate(360deg);
+            opacity: 0.25;
+          }
         }
-        .alosBtnBar{
+
+        .alosBtnBar {
           width: 4px;
           border-radius: 3px;
-          background: linear-gradient(180deg, rgba(236,72,153,.95), rgba(168,85,247,.95), rgba(59,130,246,.95));
-          box-shadow: 0 0 10px rgba(168,85,247,.25);
+          background: linear-gradient(
+            180deg,
+            rgba(236, 72, 153, 0.95),
+            rgba(168, 85, 247, 0.95),
+            rgba(59, 130, 246, 0.95)
+          );
+          box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
           height: 40%;
           animation: alosBtnEQ 0.9s ease-in-out infinite;
         }
-        .alosBtnBar1{ animation-delay: 0ms; }
-        .alosBtnBar2{ animation-delay: 120ms; }
-        .alosBtnBar3{ animation-delay: 240ms; }
-        .alosBtnBar4{ animation-delay: 360ms; }
+
+        .alosBtnBar1 {
+          animation-delay: 0ms;
+        }
+
+        .alosBtnBar2 {
+          animation-delay: 120ms;
+        }
+
+        .alosBtnBar3 {
+          animation-delay: 240ms;
+        }
+
+        .alosBtnBar4 {
+          animation-delay: 360ms;
+        }
+
         @keyframes alosBtnEQ {
-          0%   { height: 30%; opacity: .75; }
-          30%  { height: 95%; opacity: 1; }
-          60%  { height: 45%; opacity: .9; }
-          100% { height: 70%; opacity: .95; }
+          0% {
+            height: 30%;
+            opacity: 0.75;
+          }
+          30% {
+            height: 95%;
+            opacity: 1;
+          }
+          60% {
+            height: 45%;
+            opacity: 0.9;
+          }
+          100% {
+            height: 70%;
+            opacity: 0.95;
+          }
         }
       `}</style>
     </div>
