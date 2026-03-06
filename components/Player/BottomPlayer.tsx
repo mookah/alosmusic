@@ -343,80 +343,94 @@ export default function BottomPlayer() {
   const showPremium = !!track?.audioUrl;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 bg-black/75 backdrop-blur">
-      <div className="mx-auto max-w-[1400px] px-4 py-3">
-        <div className="flex items-center gap-4">
-          <div className="relative shrink-0">
-            {showPremium && (
-              <>
-                <div
-                  className={`absolute -inset-2 rounded-2xl blur-xl opacity-70 ${
-                    isPlaying ? "animate-[alosGlow_1.8s_ease-in-out_infinite]" : ""
-                  }`}
-                  style={{
-                    background:
-                      "radial-gradient(120px circle at 50% 50%, rgba(236,72,153,.32), rgba(168,85,247,.28), rgba(59,130,246,.22), transparent 65%)",
-                  }}
-                />
-                <div
-                  className={`absolute -inset-[3px] rounded-2xl ${
-                    isPlaying ? "animate-[alosRing_2.2s_linear_infinite]" : ""
-                  }`}
-                  style={{
-                    background:
-                      "linear-gradient(90deg, rgba(236,72,153,.9), rgba(168,85,247,.9), rgba(59,130,246,.9))",
-                    opacity: 0.35,
-                    filter: "blur(0px)",
-                    maskImage:
-                      "linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)",
-                    WebkitMaskImage:
-                      "linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)",
-                    padding: "2px",
-                    WebkitMaskComposite: "xor",
-                    maskComposite: "exclude",
-                  }}
-                />
-              </>
-            )}
-
-            <div className="h-12 w-12 overflow-hidden rounded-xl border border-white/10 bg-white/5">
-              {track?.coverUrl ? (
-                <img
-                  src={track.coverUrl}
-                  alt={track.title}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="grid h-full w-full place-items-center text-xs text-white/30">
-                  ♪
-                </div>
+    <div className="fixed bottom-14 md:bottom-0 left-0 right-0 z-[60] border-t border-white/10 bg-black/75 backdrop-blur">
+      <div className="mx-auto max-w-[1400px] px-3 py-3 sm:px-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+          {/* Top row on mobile / left side on desktop */}
+          <div className="flex min-w-0 items-center gap-3 md:w-[320px] md:shrink-0">
+            <div className="relative shrink-0">
+              {showPremium && (
+                <>
+                  <div
+                    className={`absolute -inset-2 rounded-2xl blur-xl opacity-70 ${
+                      isPlaying ? "animate-[alosGlow_1.8s_ease-in-out_infinite]" : ""
+                    }`}
+                    style={{
+                      background:
+                        "radial-gradient(120px circle at 50% 50%, rgba(236,72,153,.32), rgba(168,85,247,.28), rgba(59,130,246,.22), transparent 65%)",
+                    }}
+                  />
+                  <div
+                    className={`absolute -inset-[3px] rounded-2xl ${
+                      isPlaying ? "animate-[alosRing_2.2s_linear_infinite]" : ""
+                    }`}
+                    style={{
+                      background:
+                        "linear-gradient(90deg, rgba(236,72,153,.9), rgba(168,85,247,.9), rgba(59,130,246,.9))",
+                      opacity: 0.35,
+                      filter: "blur(0px)",
+                      maskImage:
+                        "linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)",
+                      WebkitMaskImage:
+                        "linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)",
+                      padding: "2px",
+                      WebkitMaskComposite: "xor",
+                      maskComposite: "exclude",
+                    }}
+                  />
+                </>
               )}
+
+              <div className="h-12 w-12 overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:h-14 sm:w-14">
+                {track?.coverUrl ? (
+                  <img
+                    src={track.coverUrl}
+                    alt={track.title}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="grid h-full w-full place-items-center text-xs text-white/30">
+                    ♪
+                  </div>
+                )}
+              </div>
             </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold sm:text-[15px]">
+                {track?.title || "Select a song"}
+              </div>
+
+              <div className="truncate text-xs text-white/60 sm:text-sm">
+                {track
+                  ? `${track.artist}${track.genre ? ` • ${track.genre}` : ""}`
+                  : "Go to Browse and click Play"}
+              </div>
+            </div>
+
+            <button
+              onClick={close}
+              className="shrink-0 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 md:hidden"
+              title="Close"
+            >
+              ✕
+            </button>
           </div>
 
+          {/* Middle */}
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">
-              {track?.title || "Select a song"}
-            </div>
-
-            <div className="truncate text-xs text-white/60">
-              {track
-                ? `${track.artist}${track.genre ? ` • ${track.genre}` : ""}`
-                : "Go to Browse and click Play"}
-            </div>
-
-            <div className="mt-2 flex items-center gap-3">
-              <div className="w-10 text-right text-[11px] text-white/50">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-10 shrink-0 text-right text-[11px] text-white/50">
                 {fmtTime(seeking ? seekPreview : currentTime)}
               </div>
 
               <div className="relative flex-1 overflow-visible">
-                <div className="pointer-events-none absolute -top-6 left-0 right-0 h-6">
-                  <div className="flex h-full items-end gap-[2px]">
+                <div className="pointer-events-none absolute -top-5 left-0 right-0 h-5 sm:-top-6 sm:h-6">
+                  <div className="flex h-full items-end gap-[1.5px] sm:gap-[2px]">
                     {levels.map((lv, i) => (
                       <span
                         key={i}
-                        className="w-[6px] rounded-sm"
+                        className="w-[4px] rounded-sm sm:w-[6px]"
                         style={{
                           height: `${Math.round(lv * 100)}%`,
                           background:
@@ -458,6 +472,30 @@ export default function BottomPlayer() {
                     seekTo(seekPreview);
                   }}
                   onMouseLeave={() => seeking && setSeeking(false)}
+                  onTouchStart={(e) => {
+                    if (!duration) return;
+                    setSeeking(true);
+                    const touch = e.touches[0];
+                    const rect = (
+                      e.currentTarget as HTMLDivElement
+                    ).getBoundingClientRect();
+                    const pct = (touch.clientX - rect.left) / rect.width;
+                    setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
+                  }}
+                  onTouchMove={(e) => {
+                    if (!duration) return;
+                    const touch = e.touches[0];
+                    const rect = (
+                      e.currentTarget as HTMLDivElement
+                    ).getBoundingClientRect();
+                    const pct = (touch.clientX - rect.left) / rect.width;
+                    setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
+                  }}
+                  onTouchEnd={() => {
+                    if (!duration) return;
+                    setSeeking(false);
+                    seekTo(seekPreview);
+                  }}
                 >
                   <div
                     className="absolute inset-y-0 left-0 rounded-full bg-purple-500 transition-[width] duration-150"
@@ -470,46 +508,59 @@ export default function BottomPlayer() {
                 </div>
               </div>
 
-              <div className="w-10 text-[11px] text-white/50">{fmtTime(duration)}</div>
+              <div className="w-10 shrink-0 text-[11px] text-white/50">
+                {fmtTime(duration)}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {isPlaying ? (
-              <button
-                onClick={pause}
-                className="relative overflow-hidden rounded-xl bg-purple-600 px-5 py-2 text-sm font-semibold hover:bg-purple-500"
-              >
-                <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
-                <span className="relative inline-flex items-center gap-2">
-                  <span className="inline-flex h-4 items-end gap-[2px]">
-                    <span className="alosBtnBar alosBtnBar1" />
-                    <span className="alosBtnBar alosBtnBar2" />
-                    <span className="alosBtnBar alosBtnBar3" />
-                    <span className="alosBtnBar alosBtnBar4" />
+          {/* Controls */}
+          <div className="flex items-center justify-between gap-3 md:justify-end">
+            <div className="flex items-center gap-2">
+              {isPlaying ? (
+                <button
+                  onClick={pause}
+                  className="relative overflow-hidden rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 sm:px-5"
+                >
+                  <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
+                  <span className="relative inline-flex items-center gap-2">
+                    <span className="inline-flex h-4 items-end gap-[2px]">
+                      <span className="alosBtnBar alosBtnBar1" />
+                      <span className="alosBtnBar alosBtnBar2" />
+                      <span className="alosBtnBar alosBtnBar3" />
+                      <span className="alosBtnBar alosBtnBar4" />
+                    </span>
+                    Pause
                   </span>
-                  Pause
-                </span>
-              </button>
-            ) : (
-              <button
-                onClick={play}
-                className="relative overflow-hidden rounded-xl bg-purple-600 px-5 py-2 text-sm font-semibold hover:bg-purple-500"
-              >
-                <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
-                <span className="relative inline-flex items-center gap-2">
-                  <span className="inline-flex h-4 items-end gap-[2px] opacity-80">
-                    <span className="alosBtnBar alosBtnBar1" />
-                    <span className="alosBtnBar alosBtnBar2" />
-                    <span className="alosBtnBar alosBtnBar3" />
-                    <span className="alosBtnBar alosBtnBar4" />
+                </button>
+              ) : (
+                <button
+                  onClick={play}
+                  className="relative overflow-hidden rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 sm:px-5"
+                >
+                  <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
+                  <span className="relative inline-flex items-center gap-2">
+                    <span className="inline-flex h-4 items-end gap-[2px] opacity-80">
+                      <span className="alosBtnBar alosBtnBar1" />
+                      <span className="alosBtnBar alosBtnBar2" />
+                      <span className="alosBtnBar alosBtnBar3" />
+                      <span className="alosBtnBar alosBtnBar4" />
+                    </span>
+                    Play
                   </span>
-                  Play
-                </span>
-              </button>
-            )}
+                </button>
+              )}
 
-            <div className="ml-3 hidden items-center gap-2 md:flex">
+              <button
+                onClick={close}
+                className="hidden rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 md:inline-flex"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="hidden items-center gap-2 md:flex">
               <button
                 onClick={() => setMuted((m) => !m)}
                 className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
@@ -532,14 +583,6 @@ export default function BottomPlayer() {
                 className="w-28 accent-purple-500"
               />
             </div>
-
-            <button
-              onClick={close}
-              className="ml-1 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
-              title="Close"
-            >
-              ✕
-            </button>
           </div>
         </div>
       </div>
