@@ -10,7 +10,7 @@ export default function Topbar({ onAuth }: { onAuth: () => void }) {
   // Logo animation per page
   let variant: "calm" | "active" | "equalizer" = "active";
 
-  if (pathname === "/") variant = "equalizer"; // HOME = equalizer
+  if (pathname === "/") variant = "equalizer";
   if (pathname === "/browse") variant = "active";
   if (pathname === "/upload") variant = "active";
 
@@ -31,12 +31,10 @@ export default function Topbar({ onAuth }: { onAuth: () => void }) {
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-black/60 backdrop-blur">
-      <div className="mx-auto max-w-[1400px] px-4 py-3 flex items-center justify-between">
-
+      <div className="mx-auto flex max-w-[1400px] items-center justify-between px-4 py-3">
         {/* Left side */}
         <div className="flex items-center gap-3">
           <LogoMark href="/" size={44} variant={variant} />
-
           <div>
             <div className="font-semibold leading-tight">ALOSMUSIC</div>
             <div className="text-xs text-white/60">
@@ -46,7 +44,7 @@ export default function Topbar({ onAuth }: { onAuth: () => void }) {
         </div>
 
         {/* Navigation */}
-        <nav className="hidden md:flex items-center gap-6">
+        <nav className="hidden items-center gap-6 md:flex">
           {navItem("/", "Home")}
           {navItem("/browse", "Browse")}
         </nav>
@@ -55,14 +53,14 @@ export default function Topbar({ onAuth }: { onAuth: () => void }) {
         <div className="flex items-center gap-3">
           <Link
             href="/upload"
-            className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 transition"
+            className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold transition hover:bg-purple-500"
           >
             Upload
           </Link>
 
           <button
             onClick={onAuth}
-            className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 transition"
+            className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm transition hover:bg-white/10"
           >
             Login / Sign up
           </button>
