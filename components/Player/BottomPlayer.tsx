@@ -9,6 +9,7 @@ import {
   updatePlayback,
 } from "@/lib/playerStore";
 import { incrementSongPlays } from "@/lib/songStats";
+import MobileNowPlaying from "@/components/Player/MobileNowPlaying";
 
 function fmtTime(sec: number) {
   if (!isFinite(sec) || sec < 0) return "0:00";
@@ -44,6 +45,7 @@ export default function BottomPlayer() {
 
   const [seeking, setSeeking] = useState(false);
   const [seekPreview, setSeekPreview] = useState(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const BAR_COUNT = 34;
   const [levels, setLevels] = useState<number[]>(
@@ -327,6 +329,7 @@ export default function BottomPlayer() {
     setCurrentTime(0);
     setDuration(0);
     setVisible(false);
+    setMobileOpen(false);
   };
 
   const seekTo = (t: number) => {
@@ -343,329 +346,350 @@ export default function BottomPlayer() {
   const showPremium = !!track?.audioUrl;
 
   return (
-    <div className="fixed bottom-14 md:bottom-0 left-0 right-0 z-[60] border-t border-white/10 bg-black/75 backdrop-blur">
-      <div className="mx-auto max-w-[1400px] px-3 py-3 sm:px-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
-          {/* Top row on mobile / left side on desktop */}
-          <div className="flex min-w-0 items-center gap-3 md:w-[320px] md:shrink-0">
-            <div className="relative shrink-0">
-              {showPremium && (
-                <>
-                  <div
-                    className={`absolute -inset-2 rounded-2xl blur-xl opacity-70 ${
-                      isPlaying ? "animate-[alosGlow_1.8s_ease-in-out_infinite]" : ""
-                    }`}
-                    style={{
-                      background:
-                        "radial-gradient(120px circle at 50% 50%, rgba(236,72,153,.32), rgba(168,85,247,.28), rgba(59,130,246,.22), transparent 65%)",
-                    }}
-                  />
-                  <div
-                    className={`absolute -inset-[3px] rounded-2xl ${
-                      isPlaying ? "animate-[alosRing_2.2s_linear_infinite]" : ""
-                    }`}
-                    style={{
-                      background:
-                        "linear-gradient(90deg, rgba(236,72,153,.9), rgba(168,85,247,.9), rgba(59,130,246,.9))",
-                      opacity: 0.35,
-                      filter: "blur(0px)",
-                      maskImage:
-                        "linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)",
-                      WebkitMaskImage:
-                        "linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)",
-                      padding: "2px",
-                      WebkitMaskComposite: "xor",
-                      maskComposite: "exclude",
-                    }}
-                  />
-                </>
-              )}
+    <>
+      <MobileNowPlaying
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        track={track}
+        isPlaying={isPlaying}
+        currentTime={currentTime}
+        duration={duration}
+        onPlay={play}
+        onPause={pause}
+        onSeek={seekTo}
+      />
 
-              <div className="h-12 w-12 overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:h-14 sm:w-14">
-                {track?.coverUrl ? (
-                  <img
-                    src={track.coverUrl}
-                    alt={track.title}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="grid h-full w-full place-items-center text-xs text-white/30">
-                    ♪
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold sm:text-[15px]">
-                {track?.title || "Select a song"}
-              </div>
-
-              <div className="truncate text-xs text-white/60 sm:text-sm">
-                {track
-                  ? `${track.artist}${track.genre ? ` • ${track.genre}` : ""}`
-                  : "Go to Browse and click Play"}
-              </div>
-            </div>
-
-            <button
-              onClick={close}
-              className="shrink-0 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 md:hidden"
-              title="Close"
+      <div className="fixed bottom-14 left-0 right-0 z-[60] border-t border-white/10 bg-black/75 backdrop-blur md:bottom-0">
+        <div className="mx-auto max-w-[1400px] px-3 py-3 sm:px-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+            <div
+              className="flex min-w-0 cursor-pointer items-center gap-3 md:w-[320px] md:shrink-0 md:cursor-default"
+              onClick={() => {
+                if (typeof window !== "undefined" && window.innerWidth < 768 && track) {
+                  setMobileOpen(true);
+                }
+              }}
             >
-              ✕
-            </button>
-          </div>
+              <div className="relative shrink-0">
+                {showPremium && (
+                  <>
+                    <div
+                      className={`absolute -inset-2 rounded-2xl blur-xl opacity-70 ${
+                        isPlaying ? "animate-[alosGlow_1.8s_ease-in-out_infinite]" : ""
+                      }`}
+                      style={{
+                        background:
+                          "radial-gradient(120px circle at 50% 50%, rgba(236,72,153,.32), rgba(168,85,247,.28), rgba(59,130,246,.22), transparent 65%)",
+                      }}
+                    />
+                    <div
+                      className={`absolute -inset-[3px] rounded-2xl ${
+                        isPlaying ? "animate-[alosRing_2.2s_linear_infinite]" : ""
+                      }`}
+                      style={{
+                        background:
+                          "linear-gradient(90deg, rgba(236,72,153,.9), rgba(168,85,247,.9), rgba(59,130,246,.9))",
+                        opacity: 0.35,
+                        filter: "blur(0px)",
+                        maskImage:
+                          "linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)",
+                        WebkitMaskImage:
+                          "linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)",
+                        padding: "2px",
+                        WebkitMaskComposite: "xor",
+                        maskComposite: "exclude",
+                      }}
+                    />
+                  </>
+                )}
 
-          {/* Middle */}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="w-10 shrink-0 text-right text-[11px] text-white/50">
-                {fmtTime(seeking ? seekPreview : currentTime)}
-              </div>
-
-              <div className="relative flex-1 overflow-visible">
-                <div className="pointer-events-none absolute -top-5 left-0 right-0 h-5 sm:-top-6 sm:h-6">
-                  <div className="flex h-full items-end gap-[1.5px] sm:gap-[2px]">
-                    {levels.map((lv, i) => (
-                      <span
-                        key={i}
-                        className="w-[4px] rounded-sm sm:w-[6px]"
-                        style={{
-                          height: `${Math.round(lv * 100)}%`,
-                          background:
-                            "linear-gradient(180deg, rgba(236,72,153,.95), rgba(168,85,247,.95), rgba(59,130,246,.95))",
-                          opacity: i / levels.length <= progressPct / 100 ? 1 : 0.22,
-                          boxShadow:
-                            i / levels.length <= progressPct / 100
-                              ? "0 0 14px rgba(168,85,247,.22)"
-                              : "none",
-                          filter: "saturate(1.2) brightness(1.05)",
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div
-                  className="relative h-2 cursor-pointer overflow-hidden rounded-full bg-white/10"
-                  onMouseDown={(e) => {
-                    if (!duration) return;
-                    setSeeking(true);
-                    const rect = (
-                      e.currentTarget as HTMLDivElement
-                    ).getBoundingClientRect();
-                    const pct = (e.clientX - rect.left) / rect.width;
-                    setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
-                  }}
-                  onMouseMove={(e) => {
-                    if (!seeking || !duration) return;
-                    const rect = (
-                      e.currentTarget as HTMLDivElement
-                    ).getBoundingClientRect();
-                    const pct = (e.clientX - rect.left) / rect.width;
-                    setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
-                  }}
-                  onMouseUp={() => {
-                    if (!duration) return;
-                    setSeeking(false);
-                    seekTo(seekPreview);
-                  }}
-                  onMouseLeave={() => seeking && setSeeking(false)}
-                  onTouchStart={(e) => {
-                    if (!duration) return;
-                    setSeeking(true);
-                    const touch = e.touches[0];
-                    const rect = (
-                      e.currentTarget as HTMLDivElement
-                    ).getBoundingClientRect();
-                    const pct = (touch.clientX - rect.left) / rect.width;
-                    setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
-                  }}
-                  onTouchMove={(e) => {
-                    if (!duration) return;
-                    const touch = e.touches[0];
-                    const rect = (
-                      e.currentTarget as HTMLDivElement
-                    ).getBoundingClientRect();
-                    const pct = (touch.clientX - rect.left) / rect.width;
-                    setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
-                  }}
-                  onTouchEnd={() => {
-                    if (!duration) return;
-                    setSeeking(false);
-                    seekTo(seekPreview);
-                  }}
-                >
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-full bg-purple-500 transition-[width] duration-150"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                  <div
-                    className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow-[0_0_18px_rgba(168,85,247,.8)]"
-                    style={{ left: `calc(${progressPct}% - 6px)` }}
-                  />
+                <div className="h-12 w-12 overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:h-14 sm:w-14">
+                  {track?.coverUrl ? (
+                    <img
+                      src={track.coverUrl}
+                      alt={track.title}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center text-xs text-white/30">
+                      ♪
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="w-10 shrink-0 text-[11px] text-white/50">
-                {fmtTime(duration)}
-              </div>
-            </div>
-          </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold sm:text-[15px]">
+                  {track?.title || "Select a song"}
+                </div>
 
-          {/* Controls */}
-          <div className="flex items-center justify-between gap-3 md:justify-end">
-            <div className="flex items-center gap-2">
-              {isPlaying ? (
-                <button
-                  onClick={pause}
-                  className="relative overflow-hidden rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 sm:px-5"
-                >
-                  <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
-                  <span className="relative inline-flex items-center gap-2">
-                    <span className="inline-flex h-4 items-end gap-[2px]">
-                      <span className="alosBtnBar alosBtnBar1" />
-                      <span className="alosBtnBar alosBtnBar2" />
-                      <span className="alosBtnBar alosBtnBar3" />
-                      <span className="alosBtnBar alosBtnBar4" />
-                    </span>
-                    Pause
-                  </span>
-                </button>
-              ) : (
-                <button
-                  onClick={play}
-                  className="relative overflow-hidden rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 sm:px-5"
-                >
-                  <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
-                  <span className="relative inline-flex items-center gap-2">
-                    <span className="inline-flex h-4 items-end gap-[2px] opacity-80">
-                      <span className="alosBtnBar alosBtnBar1" />
-                      <span className="alosBtnBar alosBtnBar2" />
-                      <span className="alosBtnBar alosBtnBar3" />
-                      <span className="alosBtnBar alosBtnBar4" />
-                    </span>
-                    Play
-                  </span>
-                </button>
-              )}
+                <div className="truncate text-xs text-white/60 sm:text-sm">
+                  {track
+                    ? `${track.artist}${track.genre ? ` • ${track.genre}` : ""}`
+                    : "Go to Browse and click Play"}
+                </div>
+              </div>
 
               <button
-                onClick={close}
-                className="hidden rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 md:inline-flex"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  close();
+                }}
+                className="shrink-0 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 md:hidden"
                 title="Close"
               >
                 ✕
               </button>
             </div>
 
-            <div className="hidden items-center gap-2 md:flex">
-              <button
-                onClick={() => setMuted((m) => !m)}
-                className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
-                title="Mute"
-              >
-                {muted || volume === 0 ? "🔇" : volume < 0.5 ? "🔈" : "🔊"}
-              </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-10 shrink-0 text-right text-[11px] text-white/50">
+                  {fmtTime(seeking ? seekPreview : currentTime)}
+                </div>
 
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={muted ? 0 : volume}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  setVolume(v);
-                  if (v > 0) setMuted(false);
-                }}
-                className="w-28 accent-purple-500"
-              />
+                <div className="relative flex-1 overflow-visible">
+                  <div className="pointer-events-none absolute -top-5 left-0 right-0 h-5 sm:-top-6 sm:h-6">
+                    <div className="flex h-full items-end gap-[1.5px] sm:gap-[2px]">
+                      {levels.map((lv, i) => (
+                        <span
+                          key={i}
+                          className="w-[4px] rounded-sm sm:w-[6px]"
+                          style={{
+                            height: `${Math.round(lv * 100)}%`,
+                            background:
+                              "linear-gradient(180deg, rgba(236,72,153,.95), rgba(168,85,247,.95), rgba(59,130,246,.95))",
+                            opacity: i / levels.length <= progressPct / 100 ? 1 : 0.22,
+                            boxShadow:
+                              i / levels.length <= progressPct / 100
+                                ? "0 0 14px rgba(168,85,247,.22)"
+                                : "none",
+                            filter: "saturate(1.2) brightness(1.05)",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div
+                    className="relative h-2 cursor-pointer overflow-hidden rounded-full bg-white/10"
+                    onMouseDown={(e) => {
+                      if (!duration) return;
+                      setSeeking(true);
+                      const rect = (
+                        e.currentTarget as HTMLDivElement
+                      ).getBoundingClientRect();
+                      const pct = (e.clientX - rect.left) / rect.width;
+                      setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
+                    }}
+                    onMouseMove={(e) => {
+                      if (!seeking || !duration) return;
+                      const rect = (
+                        e.currentTarget as HTMLDivElement
+                      ).getBoundingClientRect();
+                      const pct = (e.clientX - rect.left) / rect.width;
+                      setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
+                    }}
+                    onMouseUp={() => {
+                      if (!duration) return;
+                      setSeeking(false);
+                      seekTo(seekPreview);
+                    }}
+                    onMouseLeave={() => seeking && setSeeking(false)}
+                    onTouchStart={(e) => {
+                      if (!duration) return;
+                      setSeeking(true);
+                      const touch = e.touches[0];
+                      const rect = (
+                        e.currentTarget as HTMLDivElement
+                      ).getBoundingClientRect();
+                      const pct = (touch.clientX - rect.left) / rect.width;
+                      setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
+                    }}
+                    onTouchMove={(e) => {
+                      if (!duration) return;
+                      const touch = e.touches[0];
+                      const rect = (
+                        e.currentTarget as HTMLDivElement
+                      ).getBoundingClientRect();
+                      const pct = (touch.clientX - rect.left) / rect.width;
+                      setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
+                    }}
+                    onTouchEnd={() => {
+                      if (!duration) return;
+                      setSeeking(false);
+                      seekTo(seekPreview);
+                    }}
+                  >
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full bg-purple-500 transition-[width] duration-150"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                    <div
+                      className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow-[0_0_18px_rgba(168,85,247,.8)]"
+                      style={{ left: `calc(${progressPct}% - 6px)` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="w-10 shrink-0 text-[11px] text-white/50">
+                  {fmtTime(duration)}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 md:justify-end">
+              <div className="flex items-center gap-2">
+                {isPlaying ? (
+                  <button
+                    onClick={pause}
+                    className="relative overflow-hidden rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 sm:px-5"
+                  >
+                    <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
+                    <span className="relative inline-flex items-center gap-2">
+                      <span className="inline-flex h-4 items-end gap-[2px]">
+                        <span className="alosBtnBar alosBtnBar1" />
+                        <span className="alosBtnBar alosBtnBar2" />
+                        <span className="alosBtnBar alosBtnBar3" />
+                        <span className="alosBtnBar alosBtnBar4" />
+                      </span>
+                      Pause
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={play}
+                    className="relative overflow-hidden rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 sm:px-5"
+                  >
+                    <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
+                    <span className="relative inline-flex items-center gap-2">
+                      <span className="inline-flex h-4 items-end gap-[2px] opacity-80">
+                        <span className="alosBtnBar alosBtnBar1" />
+                        <span className="alosBtnBar alosBtnBar2" />
+                        <span className="alosBtnBar alosBtnBar3" />
+                        <span className="alosBtnBar alosBtnBar4" />
+                      </span>
+                      Play
+                    </span>
+                  </button>
+                )}
+
+                <button
+                  onClick={close}
+                  className="hidden rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 md:inline-flex"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="hidden items-center gap-2 md:flex">
+                <button
+                  onClick={() => setMuted((m) => !m)}
+                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+                  title="Mute"
+                >
+                  {muted || volume === 0 ? "🔇" : volume < 0.5 ? "🔈" : "🔊"}
+                </button>
+
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={muted ? 0 : volume}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setVolume(v);
+                    if (v > 0) setMuted(false);
+                  }}
+                  className="w-28 accent-purple-500"
+                />
+              </div>
             </div>
           </div>
         </div>
+
+        <style jsx global>{`
+          @keyframes alosGlow {
+            0% {
+              transform: scale(0.98);
+              opacity: 0.55;
+            }
+            50% {
+              transform: scale(1.04);
+              opacity: 0.85;
+            }
+            100% {
+              transform: scale(0.98);
+              opacity: 0.55;
+            }
+          }
+
+          @keyframes alosRing {
+            0% {
+              transform: rotate(0deg);
+              opacity: 0.25;
+            }
+            50% {
+              opacity: 0.45;
+            }
+            100% {
+              transform: rotate(360deg);
+              opacity: 0.25;
+            }
+          }
+
+          .alosBtnBar {
+            width: 4px;
+            border-radius: 3px;
+            background: linear-gradient(
+              180deg,
+              rgba(236, 72, 153, 0.95),
+              rgba(168, 85, 247, 0.95),
+              rgba(59, 130, 246, 0.95)
+            );
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
+            height: 40%;
+            animation: alosBtnEQ 0.9s ease-in-out infinite;
+          }
+
+          .alosBtnBar1 {
+            animation-delay: 0ms;
+          }
+
+          .alosBtnBar2 {
+            animation-delay: 120ms;
+          }
+
+          .alosBtnBar3 {
+            animation-delay: 240ms;
+          }
+
+          .alosBtnBar4 {
+            animation-delay: 360ms;
+          }
+
+          @keyframes alosBtnEQ {
+            0% {
+              height: 30%;
+              opacity: 0.75;
+            }
+            30% {
+              height: 95%;
+              opacity: 1;
+            }
+            60% {
+              height: 45%;
+              opacity: 0.9;
+            }
+            100% {
+              height: 70%;
+              opacity: 0.95;
+            }
+          }
+        `}</style>
       </div>
-
-      <style jsx global>{`
-        @keyframes alosGlow {
-          0% {
-            transform: scale(0.98);
-            opacity: 0.55;
-          }
-          50% {
-            transform: scale(1.04);
-            opacity: 0.85;
-          }
-          100% {
-            transform: scale(0.98);
-            opacity: 0.55;
-          }
-        }
-
-        @keyframes alosRing {
-          0% {
-            transform: rotate(0deg);
-            opacity: 0.25;
-          }
-          50% {
-            opacity: 0.45;
-          }
-          100% {
-            transform: rotate(360deg);
-            opacity: 0.25;
-          }
-        }
-
-        .alosBtnBar {
-          width: 4px;
-          border-radius: 3px;
-          background: linear-gradient(
-            180deg,
-            rgba(236, 72, 153, 0.95),
-            rgba(168, 85, 247, 0.95),
-            rgba(59, 130, 246, 0.95)
-          );
-          box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
-          height: 40%;
-          animation: alosBtnEQ 0.9s ease-in-out infinite;
-        }
-
-        .alosBtnBar1 {
-          animation-delay: 0ms;
-        }
-
-        .alosBtnBar2 {
-          animation-delay: 120ms;
-        }
-
-        .alosBtnBar3 {
-          animation-delay: 240ms;
-        }
-
-        .alosBtnBar4 {
-          animation-delay: 360ms;
-        }
-
-        @keyframes alosBtnEQ {
-          0% {
-            height: 30%;
-            opacity: 0.75;
-          }
-          30% {
-            height: 95%;
-            opacity: 1;
-          }
-          60% {
-            height: 45%;
-            opacity: 0.9;
-          }
-          100% {
-            height: 70%;
-            opacity: 0.95;
-          }
-        }
-      `}</style>
-    </div>
+    </>
   );
 }

@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
-  { label: "Home", href: "/" },
-  { label: "Browse", href: "/browse" },
-  { label: "Upload", href: "/upload" },
-  { label: "Profile", href: "/artist-profile" },
+  { label: "Home", href: "/", icon: "🏠" },
+  { label: "Browse", href: "/browse", icon: "🎵" },
+  { label: "Upload", href: "/upload", icon: "⬆️" },
+  { label: "Profile", href: "/artist-profile", icon: "👤" },
 ];
 
 export default function MobileBottomNav() {
@@ -23,11 +23,14 @@ export default function MobileBottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center py-3 text-xs transition ${
-                active ? "text-pink-400" : "text-white/70"
+              className={`flex flex-col items-center justify-center gap-1 py-3 text-[11px] transition ${
+                active
+                  ? "text-fuchsia-400"
+                  : "text-white/70 hover:text-white"
               }`}
             >
-              {item.label}
+              <span className="text-lg">{item.icon}</span>
+              <span>{item.label}</span>
             </Link>
           );
         })}
