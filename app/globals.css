@@ -167,3 +167,67 @@ body {
   scrollbar-width: none;
 }
 
+/* glowing pulse ring */
+@keyframes glowPulse {
+  0%,100% {
+    box-shadow:
+      0 0 8px rgba(168,85,247,.35),
+      0 0 16px rgba(236,72,153,.25);
+    transform: scale(1);
+  }
+
+  50% {
+    box-shadow:
+      0 0 16px rgba(168,85,247,.6),
+      0 0 28px rgba(236,72,153,.45);
+    transform: scale(1.06);
+  }
+}
+
+.ring-glow {
+  animation: glowPulse 2.2s ease-in-out infinite;
+}
+
+/* rotating ring */
+
+@keyframes ringSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ring-spin {
+  border: 2px solid transparent;
+  border-top-color: rgba(168,85,247,.7);
+  border-right-color: rgba(236,72,153,.6);
+  border-radius: 9999px;
+  animation: ringSpin 3s linear infinite;
+}
+
+/* equalizer animation */
+
+@keyframes eqBounce {
+  0%,100% {
+    transform: scaleY(0.4);
+    opacity: .6;
+  }
+
+  50% {
+    transform: scaleY(1.2);
+    opacity: 1;
+  }
+}
+
+.eq-bar {
+  animation: eqBounce 0.8s infinite ease-in-out;
+  transform-origin: bottom;
+}
+
+.eq-bar:nth-child(2) { animation-delay: .1s }
+.eq-bar:nth-child(3) { animation-delay: .2s }
+.eq-bar:nth-child(4) { animation-delay: .3s }
+.eq-bar:nth-child(5) { animation-delay: .4s }

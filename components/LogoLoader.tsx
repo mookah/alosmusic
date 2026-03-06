@@ -1,4 +1,3 @@
-// components/LogoLoader.tsx
 "use client";
 
 import React from "react";
@@ -9,16 +8,28 @@ type Props = {
   size?: number;
 };
 
-export default function LogoLoader({ label = "Loading...", progress, size = 54 }: Props) {
-  const pct = typeof progress === "number" ? Math.max(0, Math.min(100, Math.round(progress))) : undefined;
+export default function LogoLoader({
+  label = "Loading ALOSMUSIC...",
+  progress,
+  size = 54,
+}: Props) {
+  const pct =
+    typeof progress === "number"
+      ? Math.max(0, Math.min(100, Math.round(progress)))
+      : undefined;
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      <div className="relative grid place-items-center" style={{ width: size, height: size }}>
+    <div className="flex flex-col items-center gap-4">
+      {/* Logo ring */}
+      <div
+        className="relative grid place-items-center"
+        style={{ width: size, height: size }}
+      >
         <div className="absolute inset-0 rounded-full border border-white/10 bg-white/5" />
         <div className="absolute inset-0 rounded-full ring-glow" />
         <div className="absolute inset-0 rounded-full ring-spin" />
 
+        {/* Logo */}
         <div
           className="relative z-10 grid place-items-center rounded-2xl bg-black/70 border border-white/10
           shadow-[0_0_40px_rgba(168,85,247,.18)]"
@@ -32,18 +43,30 @@ export default function LogoLoader({ label = "Loading...", progress, size = 54 }
             <path d="M27 36H37L32 23L27 36Z" fill="rgba(0,0,0,.45)" />
             <defs>
               <linearGradient id="grad" x1="0" y1="0" x2="64" y2="64">
-                <stop offset="0%" stopColor="rgb(168, 85, 247)" />
-                <stop offset="50%" stopColor="rgb(236, 72, 153)" />
-                <stop offset="100%" stopColor="rgb(99, 102, 241)" />
+                <stop offset="0%" stopColor="rgb(168,85,247)" />
+                <stop offset="50%" stopColor="rgb(236,72,153)" />
+                <stop offset="100%" stopColor="rgb(99,102,241)" />
               </linearGradient>
             </defs>
           </svg>
         </div>
       </div>
 
+      {/* Equalizer animation */}
+      <div className="flex items-end gap-1 h-6">
+        <span className="eq-bar h-2 w-1 bg-fuchsia-400 rounded"></span>
+        <span className="eq-bar h-4 w-1 bg-purple-400 rounded"></span>
+        <span className="eq-bar h-3 w-1 bg-pink-400 rounded"></span>
+        <span className="eq-bar h-5 w-1 bg-fuchsia-400 rounded"></span>
+        <span className="eq-bar h-3 w-1 bg-purple-400 rounded"></span>
+      </div>
+
+      {/* Label */}
       <div className="text-center">
         <p className="text-sm text-white/80">{label}</p>
-        {typeof pct === "number" && <p className="text-xs text-white/60 mt-1">{pct}%</p>}
+        {typeof pct === "number" && (
+          <p className="text-xs text-white/60 mt-1">{pct}%</p>
+        )}
       </div>
     </div>
   );

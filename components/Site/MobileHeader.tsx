@@ -13,20 +13,34 @@ export default function MobileHeader({
 
   let variant: "calm" | "active" | "equalizer" = "active";
   if (pathname === "/") variant = "equalizer";
+  if (pathname === "/browse") variant = "active";
+  if (pathname === "/upload") variant = "active";
+  if (pathname === "/profile" || pathname === "/artist-profile") {
+    variant = "active";
+  }
 
   return (
-    <header className="md:hidden sticky top-0 z-50 border-b border-white/10 bg-black/90 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-black/90 backdrop-blur md:hidden">
       <div className="flex items-center justify-between gap-3 px-4 py-3">
-        <Link href="/" className="flex min-w-0 items-center gap-3">
+        {/* LEFT: do NOT wrap LogoMark in another Link */}
+        <div className="flex min-w-0 items-center gap-3">
           <LogoMark href="/" size={38} variant={variant} />
+
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">ALOSMUSIC</div>
+            <Link
+              href="/"
+              className="block truncate text-sm font-semibold text-white"
+            >
+              ALOSMUSIC
+            </Link>
+
             <div className="truncate text-[11px] text-white/60">
               Gospel • Upload • Stream
             </div>
           </div>
-        </Link>
+        </div>
 
+        {/* RIGHT */}
         <div className="flex shrink-0 items-center gap-2">
           <Link
             href="/upload"

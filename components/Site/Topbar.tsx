@@ -33,7 +33,8 @@ export default function Topbar({ onAuth }: { onAuth: () => void }) {
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-black/60 backdrop-blur">
       <div className="mx-auto flex max-w-[1400px] items-center justify-between px-4 py-3 md:px-5 lg:px-6">
-        {/* Left */}
+        
+        {/* LEFT */}
         <div className="flex min-w-0 items-center gap-3">
           <LogoMark href="/" size={44} variant={variant} />
 
@@ -41,20 +42,21 @@ export default function Topbar({ onAuth }: { onAuth: () => void }) {
             <div className="truncate font-semibold leading-tight">
               ALOSMUSIC
             </div>
+
             <div className="truncate text-xs text-white/60">
               Gospel • Upload • Stream
             </div>
           </div>
         </div>
 
-        {/* Center nav desktop only */}
+        {/* DESKTOP NAV */}
         <nav className="hidden items-center gap-6 md:flex">
           {navItem("/", "Home")}
           {navItem("/browse", "Browse")}
           {navItem("/artist-profile", "Profile")}
         </nav>
 
-        {/* Right desktop only */}
+        {/* RIGHT */}
         <div className="hidden items-center gap-3 md:flex">
           <Link
             href="/upload"
@@ -70,6 +72,7 @@ export default function Topbar({ onAuth }: { onAuth: () => void }) {
             Login / Sign up
           </button>
         </div>
+
       </div>
     </header>
   );
