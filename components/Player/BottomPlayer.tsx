@@ -32,6 +32,7 @@ export default function BottomPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const countedPlayRef = useRef<string | null>(null);
+  const seekingRef = useRef(false);
 
   const [visible, setVisible] = useState(true);
   const [track, setTrack] = useState<Track | null>(null);
@@ -51,6 +52,10 @@ export default function BottomPlayer() {
   const [levels, setLevels] = useState<number[]>(
     Array.from({ length: BAR_COUNT }, () => 0.12)
   );
+
+  useEffect(() => {
+    seekingRef.current = seeking;
+  }, [seeking]);
 
   const progressPct = useMemo(() => {
     const d = duration || 0;
@@ -150,14 +155,23 @@ export default function BottomPlayer() {
 
     const onTime = () => {
       const t = a.currentTime || 0;
-      if (!seeking) setCurrentTime(t);
+      if (!seekingRef.current) {
+        setCurrentTime(t);
+      }
       updatePlayback({ currentTime: t });
+    };
+
+    const onEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      updatePlayback({ isPlaying: false, currentTime: 0 });
     };
 
     a.addEventListener("play", onPlay);
     a.addEventListener("pause", onPause);
     a.addEventListener("loadedmetadata", onLoaded);
     a.addEventListener("timeupdate", onTime);
+    a.addEventListener("ended", onEnded);
 
     const unsub = subscribePlayer((s) => {
       setTrack(s.track);
@@ -174,9 +188,10 @@ export default function BottomPlayer() {
       a.removeEventListener("pause", onPause);
       a.removeEventListener("loadedmetadata", onLoaded);
       a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("ended", onEnded);
       unsub();
     };
-  }, [seeking]);
+  }, []);
 
   useEffect(() => {
     if (!track?.id || !isPlaying) return;
@@ -254,7 +269,8 @@ export default function BottomPlayer() {
     const a = audioRef.current;
     if (!a || !track?.audioUrl) return;
 
-    if (a.src === track.audioUrl) return;
+    const currentSrc = a.currentSrc || a.src;
+    if (currentSrc === track.audioUrl) return;
 
     a.src = track.audioUrl;
 
@@ -265,7 +281,15 @@ export default function BottomPlayer() {
     setCurrentTime(a.currentTime);
     setDuration(a.duration || 0);
 
-    a.play().catch(() => setIsPlaying(false));
+    a.play()
+      .then(() => {
+        setIsPlaying(true);
+        updatePlayback({ isPlaying: true });
+      })
+      .catch(() => {
+        setIsPlaying(false);
+        updatePlayback({ isPlaying: false });
+      });
   }, [track?.audioUrl]);
 
   useEffect(() => {
@@ -292,19 +316,25 @@ export default function BottomPlayer() {
   }, []);
 
   const play = async () => {
-    await ensureAudioGraph();
     const a = audioRef.current;
     if (!a) return;
 
+    await ensureAudioGraph();
+
     try {
       await a.play();
+      setIsPlaying(true);
+      updatePlayback({ isPlaying: true });
     } catch {}
   };
 
   const pause = () => {
     const a = audioRef.current;
     if (!a) return;
+
     a.pause();
+    setIsPlaying(false);
+    updatePlayback({ isPlaying: false });
   };
 
   const close = () => {
@@ -313,6 +343,7 @@ export default function BottomPlayer() {
       a.pause();
       a.currentTime = 0;
       a.src = "";
+      a.load();
     }
 
     countedPlayRef.current = null;
@@ -495,7 +526,9 @@ export default function BottomPlayer() {
                       setSeeking(false);
                       seekTo(seekPreview);
                     }}
-                    onMouseLeave={() => seeking && setSeeking(false)}
+                    onMouseLeave={() => {
+                      if (seeking) setSeeking(false);
+                    }}
                     onTouchStart={(e) => {
                       if (!duration) return;
                       setSeeking(true);
@@ -545,7 +578,7 @@ export default function BottomPlayer() {
                     onClick={pause}
                     className="relative overflow-hidden rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 sm:px-5"
                   >
-                    <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
+                    <span className="absolute -inset-3 pointer-events-none rounded-2xl opacity-60 blur-xl [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
                     <span className="relative inline-flex items-center gap-2">
                       <span className="inline-flex h-4 items-end gap-[2px]">
                         <span className="alosBtnBar alosBtnBar1" />
@@ -561,7 +594,7 @@ export default function BottomPlayer() {
                     onClick={play}
                     className="relative overflow-hidden rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 sm:px-5"
                   >
-                    <span className="absolute -inset-3 rounded-2xl opacity-60 blur-xl pointer-events-none [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
+                    <span className="absolute -inset-3 pointer-events-none rounded-2xl opacity-60 blur-xl [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
                     <span className="relative inline-flex items-center gap-2">
                       <span className="inline-flex h-4 items-end gap-[2px] opacity-80">
                         <span className="alosBtnBar alosBtnBar1" />
