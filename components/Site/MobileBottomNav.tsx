@@ -27,7 +27,7 @@ export default function MobileBottomNav() {
                 active ? "text-pink-400" : "text-white/70"
               }`}
             >
-              <span>{item.label}</span>
+              {item.label}
             </Link>
           );
         })}

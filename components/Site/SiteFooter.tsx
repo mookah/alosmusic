@@ -1,121 +1,88 @@
+"use client";
+
 import Link from "next/link";
-import LogoEqualizer from "@/components/Brand/LogoEqualizer";
 
 export default function SiteFooter() {
-  const year = new Date().getFullYear();
-
   return (
-    <footer className="mt-14 border-t border-white/10 bg-black/20">
-      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-10">
-        {/* Top row */}
-        <div className="grid gap-10 md:grid-cols-4">
-          {/* Brand */}
-          <div className="md:col-span-2">
-            <div className="flex items-center gap-3">
-              <LogoEqualizer size={38} />
-              <div>
-                <div className="text-base font-semibold text-white">ALOSMUSIC</div>
-                <div className="text-xs text-white/55">Gospel • Upload • Stream</div>
-              </div>
-            </div>
+    <footer className="mt-8 border-t border-white/10 pt-6 text-white/60">
+      <div className="grid gap-6 md:grid-cols-3">
+        <div>
+          <div className="text-sm font-semibold text-white">ALOSMUSIC</div>
 
-            <p className="mt-4 text-sm text-white/60 max-w-md">
-              Discover Zambia Gospel music, upload your songs, and share hope through sound.
-              Built for worship, praise, and purpose.
+          <p className="mt-2 max-w-md text-xs leading-relaxed text-white/50">
+            Zambia gospel music streaming platform for discovering, uploading,
+            and streaming uplifting gospel music.
+          </p>
+
+          <div className="mt-4">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+              Submit Your Song
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-white/45">
+              Are you a gospel artist? Upload your music and grow your audience
+              on ALOSMUSIC.
             </p>
 
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Link
-                href="/browse"
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 transition"
-              >
-                Browse
-              </Link>
-              <Link
-                href="/charts"
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 transition"
-              >
-                Charts
-              </Link>
-              <Link
-                href="/upload"
-                className="rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 transition"
-              >
-                Upload Song
-              </Link>
-              <button
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 transition"
-                type="button"
-              >
-                Get the App
-              </button>
-            </div>
-
-            {/* Social */}
-            <div className="mt-6 flex items-center gap-2">
-              <a
-                href="#"
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white/70 hover:text-white hover:bg-white/10 transition"
-              >
-                Facebook
-              </a>
-              <a
-                href="#"
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white/70 hover:text-white hover:bg-white/10 transition"
-              >
-                YouTube
-              </a>
-              <a
-                href="#"
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white/70 hover:text-white hover:bg-white/10 transition"
-              >
-                TikTok
-              </a>
-            </div>
-          </div>
-
-          {/* Platform */}
-          <div>
-            <div className="text-sm font-semibold text-white/85">Platform</div>
-            <ul className="mt-3 space-y-2 text-sm text-white/60">
-              <li><Link className="hover:text-white" href="/browse">Music</Link></li>
-              <li><Link className="hover:text-white" href="/artists">Artists</Link></li>
-              <li><Link className="hover:text-white" href="/playlists">Playlists</Link></li>
-              <li><Link className="hover:text-white" href="/charts">Charts</Link></li>
-              <li><Link className="hover:text-white" href="/upload">Upload</Link></li>
-            </ul>
-          </div>
-
-          {/* Legal / Company */}
-          <div>
-            <div className="text-sm font-semibold text-white/85">Company</div>
-            <ul className="mt-3 space-y-2 text-sm text-white/60">
-              <li><Link className="hover:text-white" href="/about">About</Link></li>
-              <li><Link className="hover:text-white" href="/contact">Contact</Link></li>
-              <li><Link className="hover:text-white" href="/support">Support</Link></li>
-            </ul>
-
-            <div className="mt-6 text-sm font-semibold text-white/85">Legal</div>
-            <ul className="mt-3 space-y-2 text-sm text-white/60">
-              <li><Link className="hover:text-white" href="/terms">Terms</Link></li>
-              <li><Link className="hover:text-white" href="/privacy">Privacy</Link></li>
-              <li><Link className="hover:text-white" href="/copyright">Copyright</Link></li>
-            </ul>
+            <Link
+              href="/upload"
+              className="mt-3 inline-flex rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-purple-500"
+            >
+              Upload Music
+            </Link>
           </div>
         </div>
 
-        {/* Bottom row */}
-        <div className="mt-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-t border-white/10 pt-6">
-          <div className="text-xs text-white/50">
-            © {year} ALOSMUSIC. All rights reserved.
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="space-y-2">
+            <Link href="/" className="block hover:text-white">
+              Home
+            </Link>
+            <Link href="/browse" className="block hover:text-white">
+              Browse
+            </Link>
+            <Link href="/upload" className="block hover:text-white">
+              Upload
+            </Link>
           </div>
-          <div className="text-xs text-white/50">
-            Made for Gospel • <span className="text-white/70">Zambia</span>
+
+          <div className="space-y-2">
+            <Link href="/artists" className="block hover:text-white">
+              Artists
+            </Link>
+            <Link href="/charts" className="block hover:text-white">
+              Charts
+            </Link>
+            <Link href="/artist-profile" className="block hover:text-white">
+              Profile
+            </Link>
           </div>
         </div>
 
-        {/* Space so BottomPlayer won't cover footer */}
-        <div className="h-24" />
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.2em] text-white/35 md:text-right">
+            Connect
+          </div>
+
+          <div className="mt-2 space-y-2 text-sm md:text-right">
+            <a href="#" className="block hover:text-white">
+              Facebook
+            </a>
+            <a href="#" className="block hover:text-white">
+              YouTube
+            </a>
+            <a href="#" className="block hover:text-white">
+              WhatsApp
+            </a>
+            <a href="mailto:info@alosmusic.com" className="block hover:text-white">
+              info@alosmusic.com
+            </a>
+          </div>
+
+          <div className="mt-5 text-xs text-white/40 md:text-right">
+            <div>© {new Date().getFullYear()} ALOSMUSIC</div>
+            <div className="mt-1">Built for Zambia Gospel Artists</div>
+          </div>
+        </div>
       </div>
     </footer>
   );
