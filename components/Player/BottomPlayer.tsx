@@ -8,6 +8,7 @@ import {
   restorePlayerFromStorage,
   updatePlayback,
 } from "@/lib/playerStore";
+import { incrementSongPlays } from "@/lib/songStats";
 
 function fmtTime(sec: number) {
   if (!isFinite(sec) || sec < 0) return "0:00";
@@ -32,6 +33,7 @@ let GLOBAL_ATTACHED_AUDIO: HTMLAudioElement | null = null;
 export default function BottomPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  const countedPlayRef = useRef<string | null>(null);
 
   const [visible, setVisible] = useState(true);
   const [track, setTrack] = useState<Track | null>(null);
@@ -180,6 +182,15 @@ export default function BottomPlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ count play once per track when playback starts
+  useEffect(() => {
+    if (!track?.id || !isPlaying) return;
+    if (countedPlayRef.current === track.id) return;
+
+    countedPlayRef.current = track.id;
+    incrementSongPlays(track.id);
+  }, [track?.id, isPlaying]);
+
   // volume sync (+ persist)
   useEffect(() => {
     const a = audioRef.current;
@@ -303,6 +314,7 @@ export default function BottomPlayer() {
       a.currentTime = 0;
       a.src = "";
     }
+    countedPlayRef.current = null;
     setNowPlaying(null);
     updatePlayback({ track: null, isPlaying: false, currentTime: 0, duration: 0 });
     setTrack(null);
