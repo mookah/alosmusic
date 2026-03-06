@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Topbar from "./Topbar";
-import Sidebar from "./Sidebar";
-import AuthModal from "./AuthModal";
+import Topbar from "./Site/Topbar";
+import Sidebar from "./Site/Sidebar";
+import AuthModal from "./Site/AuthModal";
 
 export default function AppShell({
   children,
@@ -12,7 +12,6 @@ export default function AppShell({
 }) {
   const [authOpen, setAuthOpen] = useState(false);
 
-  // ESC closes modal
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setAuthOpen(false);
@@ -25,10 +24,10 @@ export default function AppShell({
     <main className="min-h-screen bg-black text-white">
       <Topbar onAuth={() => setAuthOpen(true)} />
 
-      <div className="mx-auto max-w-[1400px] flex">
+      <div className="mx-auto flex max-w-[1400px]">
         <Sidebar onAuth={() => setAuthOpen(true)} />
 
-        <section className="flex-1 min-w-0 px-5 py-6">{children}</section>
+        <section className="min-w-0 flex-1 px-5 py-6">{children}</section>
       </div>
 
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
