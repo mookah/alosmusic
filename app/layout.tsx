@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   title: "ALOSMusic",
@@ -21,7 +22,10 @@ export default function RootLayout({
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
-      <body className="bg-black text-white">{children}</body>
+      <body className="bg-black text-white">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
