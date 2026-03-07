@@ -7,6 +7,11 @@ import {
   setNowPlaying,
   restorePlayerFromStorage,
   updatePlayback,
+  playNext,
+  playPrev,
+  toggleShuffle,
+  cycleRepeatMode,
+  type RepeatMode,
 } from "@/lib/playerStore";
 import { incrementSongPlays } from "@/lib/songStats";
 import MobileNowPlaying from "@/components/Player/MobileNowPlaying";
@@ -18,26 +23,29 @@ function fmtTime(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
-
 let GLOBAL_AUDIO: HTMLAudioElement | null = null;
-let GLOBAL_CTX: AudioContext | null = null;
-let GLOBAL_ANALYSER: AnalyserNode | null = null;
-let GLOBAL_SRC: MediaElementAudioSourceNode | null = null;
-let GLOBAL_ATTACHED_AUDIO: HTMLAudioElement | null = null;
 
 type AnyTrack = Track & {
+  audioUrl?: string;
   audioURL?: string;
+  coverUrl?: string;
   coverURL?: string;
 };
+
+function getAudioSrc(track: AnyTrack | null | undefined) {
+  return track?.audioURL || track?.audioUrl || "";
+}
+
+function getCoverSrc(track: AnyTrack | null | undefined) {
+  return track?.coverURL || track?.coverUrl || "";
+}
 
 export default function BottomPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const countedPlayRef = useRef<string | null>(null);
   const seekingRef = useRef(false);
+  const shouldAutoPlayRef = useRef(false);
 
   const [visible, setVisible] = useState(true);
   const [track, setTrack] = useState<AnyTrack | null>(null);
@@ -49,6 +57,9 @@ export default function BottomPlayer() {
   const [volume, setVolume] = useState(0.85);
   const [muted, setMuted] = useState(false);
 
+  const [shuffle, setShuffleState] = useState(false);
+  const [repeatMode, setRepeatModeState] = useState<RepeatMode>("off");
+
   const [seeking, setSeeking] = useState(false);
   const [seekPreview, setSeekPreview] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -58,8 +69,8 @@ export default function BottomPlayer() {
     Array.from({ length: BAR_COUNT }, () => 0.12)
   );
 
-  const audioSrc = track?.audioUrl || track?.audioURL || "";
-  const coverSrc = track?.coverUrl || track?.coverURL || "";
+  const audioSrc = getAudioSrc(track);
+  const coverSrc = getCoverSrc(track);
 
   useEffect(() => {
     seekingRef.current = seeking;
@@ -72,74 +83,22 @@ export default function BottomPlayer() {
     return Math.max(0, Math.min(100, (t / d) * 100));
   }, [currentTime, duration, seeking, seekPreview]);
 
-  async function ensureAudioGraph() {
-    const a = audioRef.current;
-    if (!a) return false;
-
-    a.crossOrigin = "anonymous";
-
-    if (!GLOBAL_CTX) GLOBAL_CTX = new AudioContext();
-
-    if (GLOBAL_CTX.state !== "running") {
-      try {
-        await GLOBAL_CTX.resume();
-      } catch (err) {
-        console.error("AudioContext resume failed:", err);
-      }
-    }
-
-    if (GLOBAL_CTX.state !== "running") return false;
-
-    if (!GLOBAL_ANALYSER) {
-      GLOBAL_ANALYSER = GLOBAL_CTX.createAnalyser();
-      GLOBAL_ANALYSER.fftSize = 1024;
-      GLOBAL_ANALYSER.smoothingTimeConstant = 0.85;
-    }
-
-    if (GLOBAL_SRC && GLOBAL_ATTACHED_AUDIO === a) return true;
-
-    if (GLOBAL_ATTACHED_AUDIO && GLOBAL_ATTACHED_AUDIO !== a) {
-      try {
-        GLOBAL_SRC?.disconnect();
-      } catch {}
-      try {
-        GLOBAL_ANALYSER?.disconnect();
-      } catch {}
-
-      GLOBAL_SRC = null;
-      GLOBAL_ATTACHED_AUDIO = null;
-
-      GLOBAL_ANALYSER = GLOBAL_CTX.createAnalyser();
-      GLOBAL_ANALYSER.fftSize = 1024;
-      GLOBAL_ANALYSER.smoothingTimeConstant = 0.85;
-    }
-
-    try {
-      GLOBAL_SRC = GLOBAL_CTX.createMediaElementSource(a);
-      GLOBAL_ATTACHED_AUDIO = a;
-
-      GLOBAL_SRC.connect(GLOBAL_ANALYSER);
-      GLOBAL_ANALYSER.connect(GLOBAL_CTX.destination);
-
-      return true;
-    } catch (err) {
-      console.error("ensureAudioGraph failed:", err);
-      return false;
-    }
-  }
-
   useEffect(() => {
     if (!GLOBAL_AUDIO) {
       GLOBAL_AUDIO = new Audio();
       GLOBAL_AUDIO.preload = "metadata";
-      GLOBAL_AUDIO.crossOrigin = "anonymous";
     }
 
     const a = GLOBAL_AUDIO;
     audioRef.current = a;
 
     const onAudioError = () => {
-      console.error("GLOBAL_AUDIO error:", a.error, a.src);
+      console.error("GLOBAL_AUDIO error:", {
+        src: a.currentSrc || a.src,
+        networkState: a.networkState,
+        readyState: a.readyState,
+        errorCode: a.error?.code ?? null,
+      });
     };
 
     a.addEventListener("error", onAudioError);
@@ -151,14 +110,18 @@ export default function BottomPlayer() {
       duration?: number;
       volume?: number;
       muted?: boolean;
+      shuffle?: boolean;
+      repeatMode?: RepeatMode;
     };
 
-    setTrack(snap.track);
-    setIsPlaying(!!snap.isPlaying);
-    setCurrentTime(Number(snap.currentTime || a.currentTime || 0));
-    setDuration(Number(snap.duration || a.duration || 0));
+    setTrack(snap.track || null);
+    setIsPlaying(false);
+    setCurrentTime(Number(snap.currentTime || 0));
+    setDuration(Number(snap.duration || 0));
     setVolume(typeof snap.volume === "number" ? snap.volume : 0.85);
     setMuted(!!snap.muted);
+    setShuffleState(!!snap.shuffle);
+    setRepeatModeState(snap.repeatMode ?? "off");
 
     a.volume = typeof snap.volume === "number" ? snap.volume : 0.85;
     a.muted = !!snap.muted;
@@ -188,9 +151,7 @@ export default function BottomPlayer() {
     };
 
     const onEnded = () => {
-      setIsPlaying(false);
-      setCurrentTime(0);
-      updatePlayback({ isPlaying: false, currentTime: 0 });
+      playNext();
     };
 
     a.addEventListener("play", onPlay);
@@ -200,7 +161,12 @@ export default function BottomPlayer() {
     a.addEventListener("ended", onEnded);
 
     const unsub = subscribePlayer((s) => {
-      const next = s as typeof s & { track: AnyTrack | null };
+      const next = s as typeof s & {
+        track: AnyTrack | null;
+        shuffle?: boolean;
+        repeatMode?: RepeatMode;
+      };
+
       setTrack(next.track);
       setVisible(true);
       setIsPlaying(!!next.isPlaying);
@@ -208,6 +174,8 @@ export default function BottomPlayer() {
       setDuration(Number(next.duration || 0));
       setVolume(typeof next.volume === "number" ? next.volume : 0.85);
       setMuted(!!next.muted);
+      setShuffleState(!!next.shuffle);
+      setRepeatModeState(next.repeatMode ?? "off");
     });
 
     return () => {
@@ -245,40 +213,10 @@ export default function BottomPlayer() {
 
   useEffect(() => {
     const tick = () => {
-      if (!GLOBAL_ANALYSER) {
-        if (!isPlaying) {
-          setLevels((prev) => prev.map((p) => 0.85 * p + 0.15 * 0.12));
-        }
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
-
-      const freq = new Uint8Array(GLOBAL_ANALYSER.frequencyBinCount);
-      GLOBAL_ANALYSER.getByteFrequencyData(freq);
-
-      const next: number[] = [];
-      const n = freq.length;
-
-      for (let i = 0; i < BAR_COUNT; i++) {
-        const start = Math.floor((i / BAR_COUNT) * n);
-        const end = Math.floor(((i + 1) / BAR_COUNT) * n);
-        let sum = 0;
-        let count = 0;
-
-        for (let j = start; j < end; j++) {
-          sum += freq[j] || 0;
-          count++;
-        }
-
-        const avg = count ? sum / count : 0;
-        const v = clamp01((avg / 255) * 1.15);
-        next.push(0.12 + v * 0.88);
-      }
-
       if (!isPlaying) {
         setLevels((prev) => prev.map((p) => 0.85 * p + 0.15 * 0.12));
       } else {
-        setLevels(next);
+        setLevels((prev) => prev.map(() => 0.18 + Math.random() * 0.72));
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -306,16 +244,12 @@ export default function BottomPlayer() {
     a.src = audioSrc;
     a.load();
 
-    a.volume = Math.max(0, Math.min(1, volume));
-    a.muted = muted;
-    a.crossOrigin = "anonymous";
-
     const s = restorePlayerFromStorage() as {
       track?: AnyTrack | null;
       currentTime?: number;
     };
 
-    const savedSrc = s.track?.audioUrl || s.track?.audioURL || "";
+    const savedSrc = getAudioSrc(s.track || null);
     const startAt = savedSrc === audioSrc ? Number(s.currentTime || 0) : 0;
 
     const onLoadedMetadata = () => {
@@ -325,6 +259,7 @@ export default function BottomPlayer() {
 
       setCurrentTime(a.currentTime || 0);
       setDuration(a.duration || 0);
+
       updatePlayback({
         currentTime: a.currentTime || 0,
         duration: a.duration || 0,
@@ -332,20 +267,29 @@ export default function BottomPlayer() {
     };
 
     const onCanPlay = async () => {
+      if (!shouldAutoPlayRef.current) return;
+
       try {
         await a.play();
         setIsPlaying(true);
         updatePlayback({ isPlaying: true });
-        await ensureAudioGraph();
       } catch (err) {
         console.error("Track play failed:", err);
         setIsPlaying(false);
         updatePlayback({ isPlaying: false });
+      } finally {
+        shouldAutoPlayRef.current = false;
       }
     };
 
     const onError = () => {
-      console.error("Audio element error:", a.error, audioSrc);
+      console.error("Audio element error:", {
+        src: audioSrc,
+        currentSrc: a.currentSrc || a.src,
+        networkState: a.networkState,
+        readyState: a.readyState,
+        errorCode: a.error?.code ?? null,
+      });
     };
 
     a.addEventListener("loadedmetadata", onLoadedMetadata);
@@ -357,20 +301,21 @@ export default function BottomPlayer() {
       a.removeEventListener("canplay", onCanPlay);
       a.removeEventListener("error", onError);
     };
-  }, [audioSrc, volume, muted]);
+  }, [audioSrc]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const customEvent = e as CustomEvent<AnyTrack>;
       const t = customEvent.detail;
 
-      const nextAudio = t?.audioUrl || t?.audioURL;
+      const nextAudio = getAudioSrc(t);
       if (!nextAudio) {
         console.error("No audio url on track:", t);
         return;
       }
 
       countedPlayRef.current = null;
+      shouldAutoPlayRef.current = true;
 
       setNowPlaying(t);
       updatePlayback({
@@ -394,6 +339,8 @@ export default function BottomPlayer() {
     if (!a) return;
 
     try {
+      shouldAutoPlayRef.current = true;
+
       if (!a.src && audioSrc) {
         a.src = audioSrc;
         a.load();
@@ -401,15 +348,15 @@ export default function BottomPlayer() {
 
       a.volume = Math.max(0, Math.min(1, volume));
       a.muted = muted;
-      a.crossOrigin = "anonymous";
 
       await a.play();
+
       setIsPlaying(true);
       updatePlayback({ isPlaying: true });
-
-      await ensureAudioGraph();
     } catch (err) {
       console.error("Play failed:", err);
+      setIsPlaying(false);
+      updatePlayback({ isPlaying: false });
     }
   };
 
@@ -448,6 +395,8 @@ export default function BottomPlayer() {
     }
 
     countedPlayRef.current = null;
+    shouldAutoPlayRef.current = false;
+
     setNowPlaying(null);
     updatePlayback({
       track: null,
@@ -691,7 +640,15 @@ export default function BottomPlayer() {
             </div>
 
             <div className="flex items-center justify-between gap-3 md:justify-end">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={playPrev}
+                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+                  title="Previous"
+                >
+                  ⏮
+                </button>
+
                 {isPlaying ? (
                   <button
                     onClick={pause}
@@ -727,11 +684,43 @@ export default function BottomPlayer() {
                 )}
 
                 <button
+                  onClick={playNext}
+                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+                  title="Next"
+                >
+                  ⏭
+                </button>
+
+                <button
                   onClick={stop}
                   className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
                   title="Stop"
                 >
                   Stop
+                </button>
+
+                <button
+                  onClick={() => toggleShuffle()}
+                  className={`rounded-xl border px-3 py-2 text-sm hover:bg-white/10 ${
+                    shuffle
+                      ? "border-purple-400 bg-purple-500/20 text-white"
+                      : "border-white/15 bg-white/5"
+                  }`}
+                  title="Shuffle"
+                >
+                  🔀
+                </button>
+
+                <button
+                  onClick={() => cycleRepeatMode()}
+                  className={`rounded-xl border px-3 py-2 text-sm hover:bg-white/10 ${
+                    repeatMode !== "off"
+                      ? "border-purple-400 bg-purple-500/20 text-white"
+                      : "border-white/15 bg-white/5"
+                  }`}
+                  title="Repeat"
+                >
+                  {repeatMode === "one" ? "🔂" : "🔁"}
                 </button>
 
                 <button
