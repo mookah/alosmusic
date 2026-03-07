@@ -267,16 +267,16 @@ export default function BottomPlayer() {
 
   useEffect(() => {
     const a = audioRef.current;
-    if (!a || !track?.audioURL) return;
+    if (!a || !track?.audioUrl) return;
 
     const currentSrc = a.currentSrc || a.src;
-    if (currentSrc === track.audioURL) return;
+    if (currentSrc === track.audioUrl) return;
 
-    a.src = track.audioURL;
+    a.src = track.audioUrl;
     a.load();
 
     const s = restorePlayerFromStorage();
-    const startAt = s.track?.audioURL === track.audioURL ? s.currentTime : 0;
+    const startAt = s.track?.audioUrl === track.audioUrl ? s.currentTime : 0;
 
     a.currentTime = Math.max(0, startAt || 0);
     setCurrentTime(a.currentTime);
@@ -292,14 +292,14 @@ export default function BottomPlayer() {
         setIsPlaying(false);
         updatePlayback({ isPlaying: false });
       });
-  }, [track?.audioURL]);
+  }, [track?.audioUrl]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const customEvent = e as CustomEvent<Track>;
       const t = customEvent.detail;
 
-      if (!t?.audioURL) return;
+      if (!t?.audioUrl) return;
 
       setNowPlaying(t);
       updatePlayback({
@@ -323,8 +323,8 @@ export default function BottomPlayer() {
     if (!a) return;
 
     try {
-      if (!a.src && track?.audioURL) {
-        a.src = track.audioURL;
+      if (!a.src && track?.audioUrl) {
+        a.src = track.audioUrl;
         a.load();
       }
 
@@ -400,7 +400,7 @@ export default function BottomPlayer() {
 
   if (!visible) return null;
 
-  const showPremium = !!track?.audioURL;
+  const showPremium = !!track?.audioUrl;
 
   return (
     <>
