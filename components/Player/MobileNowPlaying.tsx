@@ -15,7 +15,8 @@ type MobileNowPlayingProps = {
   isPlaying: boolean;
   currentTime?: number;
   duration?: number;
-  onTogglePlay?: () => void;
+  onPlayPause?: () => void;
+  onSeek?: (value: number) => void;
 };
 
 export default function MobileNowPlaying({
@@ -25,9 +26,12 @@ export default function MobileNowPlaying({
   isPlaying,
   currentTime = 0,
   duration = 0,
-  onTogglePlay,
+  onPlayPause,
+  onSeek,
 }: MobileNowPlayingProps) {
   if (!open || !track) return null;
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <div className="fixed inset-0 z-[120] bg-black/95 text-white">
@@ -68,18 +72,26 @@ export default function MobileNowPlaying({
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
-          <div className="h-2 w-full rounded-full bg-white/10">
+
+          <input
+            type="range"
+            min={0}
+            max={duration || 0}
+            value={currentTime}
+            onChange={(e) => onSeek?.(Number(e.target.value))}
+            className="w-full"
+          />
+
+          <div className="mt-2 h-2 w-full rounded-full bg-white/10">
             <div
               className="h-2 rounded-full bg-purple-500"
-              style={{
-                width: duration > 0 ? `${(currentTime / duration) * 100}%` : "0%",
-              }}
+              style={{ width: `${progress}%` }}
             />
           </div>
         </div>
 
         <button
-          onClick={onTogglePlay}
+          onClick={onPlayPause}
           className="mt-8 rounded-2xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-500"
         >
           {isPlaying ? "Pause" : "Play"}
