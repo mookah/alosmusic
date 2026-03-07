@@ -5,8 +5,8 @@ type Track = {
   title?: string;
   artist?: string;
   genre?: string;
-  coverURL?: string;
-  audioURL?: string;
+  coverUrl?: string;
+  audioUrl?: string;
 };
 
 type MobileNowPlayingProps = {
@@ -52,9 +52,9 @@ export default function MobileNowPlaying({
 
       <div className="mx-auto flex max-w-md flex-col items-center px-6 py-8">
         <div className="mb-6 aspect-square w-full overflow-hidden rounded-2xl bg-white/5">
-          {track.coverURL ? (
+          {track.coverUrl ? (
             <img
-              src={track.coverURL}
+              src={track.coverUrl}
               alt={track.title || "Cover"}
               className="h-full w-full object-cover"
             />

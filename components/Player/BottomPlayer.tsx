@@ -470,9 +470,9 @@ export default function BottomPlayer() {
                 )}
 
                 <div className="h-12 w-12 overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:h-14 sm:w-14">
-                  {track?.coverURL ? (
+                  {track?.coverUrl ? (
                     <img
-                      src={track.coverURL}
+                      src={track.coverUrl}
                       alt={track.title || "Cover"}
                       className="h-full w-full object-cover"
                     />
