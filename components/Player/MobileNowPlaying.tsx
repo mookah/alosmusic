@@ -15,7 +15,8 @@ type MobileNowPlayingProps = {
   isPlaying: boolean;
   currentTime?: number;
   duration?: number;
-  onPlayPause?: () => void;
+  onPlay?: () => void | Promise<void>;
+  onPause?: () => void;
   onSeek?: (value: number) => void;
 };
 
@@ -26,7 +27,8 @@ export default function MobileNowPlaying({
   isPlaying,
   currentTime = 0,
   duration = 0,
-  onPlayPause,
+  onPlay,
+  onPause,
   onSeek,
 }: MobileNowPlayingProps) {
   if (!open || !track) return null;
@@ -91,7 +93,13 @@ export default function MobileNowPlaying({
         </div>
 
         <button
-          onClick={onPlayPause}
+          onClick={() => {
+            if (isPlaying) {
+              onPause?.();
+            } else {
+              onPlay?.();
+            }
+          }}
           className="mt-8 rounded-2xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-500"
         >
           {isPlaying ? "Pause" : "Play"}
