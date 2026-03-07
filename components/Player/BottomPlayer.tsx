@@ -28,6 +28,11 @@ let GLOBAL_ANALYSER: AnalyserNode | null = null;
 let GLOBAL_SRC: MediaElementAudioSourceNode | null = null;
 let GLOBAL_ATTACHED_AUDIO: HTMLAudioElement | null = null;
 
+type AnyTrack = Track & {
+  audioURL?: string;
+  coverURL?: string;
+};
+
 export default function BottomPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -35,7 +40,7 @@ export default function BottomPlayer() {
   const seekingRef = useRef(false);
 
   const [visible, setVisible] = useState(true);
-  const [track, setTrack] = useState<Track | null>(null);
+  const [track, setTrack] = useState<AnyTrack | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(0);
@@ -52,6 +57,9 @@ export default function BottomPlayer() {
   const [levels, setLevels] = useState<number[]>(
     Array.from({ length: BAR_COUNT }, () => 0.12)
   );
+
+  const audioSrc = track?.audioUrl || track?.audioURL || "";
+  const coverSrc = track?.coverUrl || track?.coverURL || "";
 
   useEffect(() => {
     seekingRef.current = seeking;
@@ -75,7 +83,9 @@ export default function BottomPlayer() {
     if (GLOBAL_CTX.state !== "running") {
       try {
         await GLOBAL_CTX.resume();
-      } catch {}
+      } catch (err) {
+        console.error("AudioContext resume failed:", err);
+      }
     }
 
     if (GLOBAL_CTX.state !== "running") return false;
@@ -112,7 +122,8 @@ export default function BottomPlayer() {
       GLOBAL_ANALYSER.connect(GLOBAL_CTX.destination);
 
       return true;
-    } catch {
+    } catch (err) {
+      console.error("ensureAudioGraph failed:", err);
       return false;
     }
   }
@@ -127,7 +138,21 @@ export default function BottomPlayer() {
     const a = GLOBAL_AUDIO;
     audioRef.current = a;
 
-    const snap = restorePlayerFromStorage();
+    const onAudioError = () => {
+      console.error("GLOBAL_AUDIO error:", a.error, a.src);
+    };
+
+    a.addEventListener("error", onAudioError);
+
+    const snap = restorePlayerFromStorage() as {
+      track: AnyTrack | null;
+      isPlaying?: boolean;
+      currentTime?: number;
+      duration?: number;
+      volume?: number;
+      muted?: boolean;
+    };
+
     setTrack(snap.track);
     setIsPlaying(!!snap.isPlaying);
     setCurrentTime(Number(snap.currentTime || a.currentTime || 0));
@@ -175,16 +200,18 @@ export default function BottomPlayer() {
     a.addEventListener("ended", onEnded);
 
     const unsub = subscribePlayer((s) => {
-      setTrack(s.track);
+      const next = s as typeof s & { track: AnyTrack | null };
+      setTrack(next.track);
       setVisible(true);
-      setIsPlaying(!!s.isPlaying);
-      setCurrentTime(Number(s.currentTime || 0));
-      setDuration(Number(s.duration || 0));
-      setVolume(typeof s.volume === "number" ? s.volume : 0.85);
-      setMuted(!!s.muted);
+      setIsPlaying(!!next.isPlaying);
+      setCurrentTime(Number(next.currentTime || 0));
+      setDuration(Number(next.duration || 0));
+      setVolume(typeof next.volume === "number" ? next.volume : 0.85);
+      setMuted(!!next.muted);
     });
 
     return () => {
+      a.removeEventListener("error", onAudioError);
       a.removeEventListener("play", onPlay);
       a.removeEventListener("pause", onPause);
       a.removeEventListener("loadedmetadata", onLoaded);
@@ -268,58 +295,83 @@ export default function BottomPlayer() {
 
   useEffect(() => {
     const a = audioRef.current;
-    if (!a || !track?.audioUrl) return;
+    if (!a || !audioSrc) return;
 
     const currentSrc = a.currentSrc || a.src;
-    if (currentSrc === track.audioUrl) return;
+    if (currentSrc === audioSrc) return;
 
-    a.src = track.audioUrl;
+    countedPlayRef.current = null;
+
+    a.pause();
+    a.src = audioSrc;
     a.load();
 
-    const s = restorePlayerFromStorage();
-    const startAt = s.track?.audioUrl === track.audioUrl ? s.currentTime : 0;
+    a.volume = Math.max(0, Math.min(1, volume));
+    a.muted = muted;
+    a.crossOrigin = "anonymous";
 
-    const applyStartTime = () => {
-      try {
-        a.currentTime = Math.max(0, Number(startAt || 0));
-        setCurrentTime(a.currentTime);
-        updatePlayback({ currentTime: a.currentTime });
-      } catch {}
+    const s = restorePlayerFromStorage() as {
+      track?: AnyTrack | null;
+      currentTime?: number;
     };
 
+    const savedSrc = s.track?.audioUrl || s.track?.audioURL || "";
+    const startAt = savedSrc === audioSrc ? Number(s.currentTime || 0) : 0;
+
     const onLoadedMetadata = () => {
+      try {
+        a.currentTime = Math.max(0, startAt);
+      } catch {}
+
+      setCurrentTime(a.currentTime || 0);
       setDuration(a.duration || 0);
-      applyStartTime();
-      a.removeEventListener("loadedmetadata", onLoadedMetadata);
+      updatePlayback({
+        currentTime: a.currentTime || 0,
+        duration: a.duration || 0,
+      });
+    };
+
+    const onCanPlay = async () => {
+      try {
+        await a.play();
+        setIsPlaying(true);
+        updatePlayback({ isPlaying: true });
+        await ensureAudioGraph();
+      } catch (err) {
+        console.error("Track play failed:", err);
+        setIsPlaying(false);
+        updatePlayback({ isPlaying: false });
+      }
+    };
+
+    const onError = () => {
+      console.error("Audio element error:", a.error, audioSrc);
     };
 
     a.addEventListener("loadedmetadata", onLoadedMetadata);
-
-    ensureAudioGraph()
-      .then(() => a.play())
-      .then(() => {
-        setIsPlaying(true);
-        updatePlayback({ isPlaying: true });
-      })
-      .catch((err) => {
-        console.error("Auto play failed:", err);
-        setIsPlaying(false);
-        updatePlayback({ isPlaying: false });
-      });
+    a.addEventListener("canplay", onCanPlay, { once: true });
+    a.addEventListener("error", onError);
 
     return () => {
       a.removeEventListener("loadedmetadata", onLoadedMetadata);
+      a.removeEventListener("canplay", onCanPlay);
+      a.removeEventListener("error", onError);
     };
-  }, [track?.audioUrl]);
+  }, [audioSrc, volume, muted]);
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const customEvent = e as CustomEvent<Track>;
+      const customEvent = e as CustomEvent<AnyTrack>;
       const t = customEvent.detail;
 
-      if (!t?.audioUrl) return;
+      const nextAudio = t?.audioUrl || t?.audioURL;
+      if (!nextAudio) {
+        console.error("No audio url on track:", t);
+        return;
+      }
 
       countedPlayRef.current = null;
+
       setNowPlaying(t);
       updatePlayback({
         track: t,
@@ -342,16 +394,20 @@ export default function BottomPlayer() {
     if (!a) return;
 
     try {
-      if (!a.src && track?.audioUrl) {
-        a.src = track.audioUrl;
+      if (!a.src && audioSrc) {
+        a.src = audioSrc;
         a.load();
       }
 
-      await ensureAudioGraph();
-      await a.play();
+      a.volume = Math.max(0, Math.min(1, volume));
+      a.muted = muted;
+      a.crossOrigin = "anonymous";
 
+      await a.play();
       setIsPlaying(true);
       updatePlayback({ isPlaying: true });
+
+      await ensureAudioGraph();
     } catch (err) {
       console.error("Play failed:", err);
     }
@@ -419,7 +475,7 @@ export default function BottomPlayer() {
 
   if (!visible) return null;
 
-  const showPremium = !!track?.audioUrl;
+  const showPremium = !!audioSrc;
 
   return (
     <>
@@ -489,10 +545,10 @@ export default function BottomPlayer() {
                 )}
 
                 <div className="h-12 w-12 overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:h-14 sm:w-14">
-                  {track?.coverUrl ? (
+                  {coverSrc ? (
                     <img
-                      src={track.coverUrl}
-                      alt={track.title || "Cover"}
+                      src={coverSrc}
+                      alt={track?.title || "Cover"}
                       className="h-full w-full object-cover"
                     />
                   ) : (
