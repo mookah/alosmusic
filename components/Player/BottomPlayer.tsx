@@ -121,7 +121,6 @@ export default function BottomPlayer() {
     if (!GLOBAL_AUDIO) {
       GLOBAL_AUDIO = new Audio();
       GLOBAL_AUDIO.preload = "metadata";
-      GLOBAL_AUDIO.playsInline = true;
     }
 
     const a = GLOBAL_AUDIO;
