@@ -121,6 +121,7 @@ export default function BottomPlayer() {
     if (!GLOBAL_AUDIO) {
       GLOBAL_AUDIO = new Audio();
       GLOBAL_AUDIO.preload = "metadata";
+      GLOBAL_AUDIO.crossOrigin = "anonymous";
     }
 
     const a = GLOBAL_AUDIO;
@@ -278,11 +279,24 @@ export default function BottomPlayer() {
     const s = restorePlayerFromStorage();
     const startAt = s.track?.audioUrl === track.audioUrl ? s.currentTime : 0;
 
-    a.currentTime = Math.max(0, startAt || 0);
-    setCurrentTime(a.currentTime);
-    setDuration(a.duration || 0);
+    const applyStartTime = () => {
+      try {
+        a.currentTime = Math.max(0, Number(startAt || 0));
+        setCurrentTime(a.currentTime);
+        updatePlayback({ currentTime: a.currentTime });
+      } catch {}
+    };
 
-    a.play()
+    const onLoadedMetadata = () => {
+      setDuration(a.duration || 0);
+      applyStartTime();
+      a.removeEventListener("loadedmetadata", onLoadedMetadata);
+    };
+
+    a.addEventListener("loadedmetadata", onLoadedMetadata);
+
+    ensureAudioGraph()
+      .then(() => a.play())
       .then(() => {
         setIsPlaying(true);
         updatePlayback({ isPlaying: true });
@@ -292,6 +306,10 @@ export default function BottomPlayer() {
         setIsPlaying(false);
         updatePlayback({ isPlaying: false });
       });
+
+    return () => {
+      a.removeEventListener("loadedmetadata", onLoadedMetadata);
+    };
   }, [track?.audioUrl]);
 
   useEffect(() => {
@@ -301,6 +319,7 @@ export default function BottomPlayer() {
 
       if (!t?.audioUrl) return;
 
+      countedPlayRef.current = null;
       setNowPlaying(t);
       updatePlayback({
         track: t,
