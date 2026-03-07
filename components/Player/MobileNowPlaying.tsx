@@ -4,6 +4,7 @@ type Track = {
   id?: string;
   title?: string;
   artist?: string;
+  genre?: string;
   coverURL?: string;
   audioURL?: string;
 };
@@ -67,8 +68,10 @@ export default function MobileNowPlaying({
         <h3 className="text-center text-2xl font-bold">
           {track.title || "Untitled Song"}
         </h3>
-        <p className="mt-1 text-white/70">
+
+        <p className="mt-1 text-center text-white/70">
           {track.artist || "Unknown Artist"}
+          {track.genre ? ` • ${track.genre}` : ""}
         </p>
 
         <div className="mt-6 w-full">
@@ -83,7 +86,7 @@ export default function MobileNowPlaying({
             max={duration || 0}
             value={currentTime}
             onChange={(e) => onSeek?.(Number(e.target.value))}
-            className="w-full"
+            className="w-full accent-purple-500"
           />
 
           <div className="mt-2 h-2 w-full rounded-full bg-white/10">
@@ -94,29 +97,31 @@ export default function MobileNowPlaying({
           </div>
         </div>
 
-        <div className="mt-8 flex w-full gap-3">
-          {isPlaying ? (
-            <button
-              onClick={() => onPause?.()}
-              className="flex-1 rounded-2xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-500"
-            >
-              Pause
-            </button>
-          ) : (
-            <button
-              onClick={() => onPlay?.()}
-              className="flex-1 rounded-2xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-500"
-            >
-              Play
-            </button>
-          )}
+        <div className="mt-8 grid w-full grid-cols-3 gap-3">
+          <button
+            onClick={() => onPlay?.()}
+            className="rounded-2xl bg-purple-600 px-4 py-3 font-semibold hover:bg-purple-500"
+          >
+            Play
+          </button>
+
+          <button
+            onClick={() => onPause?.()}
+            className="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 font-semibold hover:bg-white/10"
+          >
+            Pause
+          </button>
 
           <button
             onClick={() => onStop?.()}
-            className="flex-1 rounded-2xl border border-white/15 bg-white/5 px-6 py-3 font-semibold hover:bg-white/10"
+            className="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 font-semibold hover:bg-white/10"
           >
             Stop
           </button>
+        </div>
+
+        <div className="mt-4 text-sm text-white/60">
+          {isPlaying ? "Playing" : "Paused"}
         </div>
       </div>
     </div>

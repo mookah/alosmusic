@@ -121,6 +121,7 @@ export default function BottomPlayer() {
     if (!GLOBAL_AUDIO) {
       GLOBAL_AUDIO = new Audio();
       GLOBAL_AUDIO.preload = "metadata";
+      GLOBAL_AUDIO.playsInline = true;
     }
 
     const a = GLOBAL_AUDIO;
@@ -272,9 +273,8 @@ export default function BottomPlayer() {
     const currentSrc = a.currentSrc || a.src;
     if (currentSrc === track.audioURL) return;
 
-    console.log("Now playing URL:", track.audioURL);
-
     a.src = track.audioURL;
+    a.load();
 
     const s = restorePlayerFromStorage();
     const startAt = s.track?.audioURL === track.audioURL ? s.currentTime : 0;
@@ -300,9 +300,6 @@ export default function BottomPlayer() {
       const customEvent = e as CustomEvent<Track>;
       const t = customEvent.detail;
 
-      console.log("TRACK:", t);
-      console.log("audioURL:", t?.audioURL);
-
       if (!t?.audioURL) return;
 
       setNowPlaying(t);
@@ -326,10 +323,15 @@ export default function BottomPlayer() {
     const a = audioRef.current;
     if (!a) return;
 
-    await ensureAudioGraph();
-
     try {
+      if (!a.src && track?.audioURL) {
+        a.src = track.audioURL;
+        a.load();
+      }
+
+      await ensureAudioGraph();
       await a.play();
+
       setIsPlaying(true);
       updatePlayback({ isPlaying: true });
     } catch (err) {
@@ -344,6 +346,22 @@ export default function BottomPlayer() {
     a.pause();
     setIsPlaying(false);
     updatePlayback({ isPlaying: false });
+  };
+
+  const stop = () => {
+    const a = audioRef.current;
+    if (!a) return;
+
+    a.pause();
+    a.currentTime = 0;
+
+    setIsPlaying(false);
+    setCurrentTime(0);
+
+    updatePlayback({
+      isPlaying: false,
+      currentTime: 0,
+    });
   };
 
   const close = () => {
@@ -396,6 +414,7 @@ export default function BottomPlayer() {
         duration={duration}
         onPlay={play}
         onPause={pause}
+        onStop={stop}
         onSeek={seekTo}
       />
 
@@ -632,6 +651,14 @@ export default function BottomPlayer() {
                     </span>
                   </button>
                 )}
+
+                <button
+                  onClick={stop}
+                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+                  title="Stop"
+                >
+                  Stop
+                </button>
 
                 <button
                   onClick={close}
