@@ -1,14 +1,24 @@
-import { doc, increment, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { getDeviceId } from "@/lib/deviceId";
 
 export async function incrementSongPlays(songId: string) {
   if (!songId) return;
 
   try {
-    const ref = doc(db, "songs", songId);
-    await updateDoc(ref, {
-      plays: increment(1),
+    const res = await fetch("/api/streams/increment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        songId,
+        deviceId: getDeviceId(),
+      }),
     });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Failed to increment plays:", text);
+    }
   } catch (error) {
     console.error("Failed to increment plays:", error);
   }
