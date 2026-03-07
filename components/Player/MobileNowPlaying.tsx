@@ -17,6 +17,7 @@ type MobileNowPlayingProps = {
   duration?: number;
   onPlay?: () => void | Promise<void>;
   onPause?: () => void;
+  onStop?: () => void;
   onSeek?: (value: number) => void;
 };
 
@@ -29,6 +30,7 @@ export default function MobileNowPlaying({
   duration = 0,
   onPlay,
   onPause,
+  onStop,
   onSeek,
 }: MobileNowPlayingProps) {
   if (!open || !track) return null;
@@ -62,7 +64,7 @@ export default function MobileNowPlaying({
           )}
         </div>
 
-        <h3 className="text-2xl font-bold">
+        <h3 className="text-center text-2xl font-bold">
           {track.title || "Untitled Song"}
         </h3>
         <p className="mt-1 text-white/70">
@@ -92,18 +94,30 @@ export default function MobileNowPlaying({
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            if (isPlaying) {
-              onPause?.();
-            } else {
-              onPlay?.();
-            }
-          }}
-          className="mt-8 rounded-2xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-500"
-        >
-          {isPlaying ? "Pause" : "Play"}
-        </button>
+        <div className="mt-8 flex w-full gap-3">
+          {isPlaying ? (
+            <button
+              onClick={() => onPause?.()}
+              className="flex-1 rounded-2xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-500"
+            >
+              Pause
+            </button>
+          ) : (
+            <button
+              onClick={() => onPlay?.()}
+              className="flex-1 rounded-2xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-500"
+            >
+              Play
+            </button>
+          )}
+
+          <button
+            onClick={() => onStop?.()}
+            className="flex-1 rounded-2xl border border-white/15 bg-white/5 px-6 py-3 font-semibold hover:bg-white/10"
+          >
+            Stop
+          </button>
+        </div>
       </div>
     </div>
   );
