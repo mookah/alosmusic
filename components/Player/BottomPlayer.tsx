@@ -267,15 +267,17 @@ export default function BottomPlayer() {
 
   useEffect(() => {
     const a = audioRef.current;
-    if (!a || !track?.audioUrl) return;
+    if (!a || !track?.audioURL) return;
 
     const currentSrc = a.currentSrc || a.src;
-    if (currentSrc === track.audioUrl) return;
+    if (currentSrc === track.audioURL) return;
 
-    a.src = track.audioUrl;
+    console.log("Now playing URL:", track.audioURL);
+
+    a.src = track.audioURL;
 
     const s = restorePlayerFromStorage();
-    const startAt = s.track?.audioUrl === track.audioUrl ? s.currentTime : 0;
+    const startAt = s.track?.audioURL === track.audioURL ? s.currentTime : 0;
 
     a.currentTime = Math.max(0, startAt || 0);
     setCurrentTime(a.currentTime);
@@ -286,18 +288,22 @@ export default function BottomPlayer() {
         setIsPlaying(true);
         updatePlayback({ isPlaying: true });
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Auto play failed:", err);
         setIsPlaying(false);
         updatePlayback({ isPlaying: false });
       });
-  }, [track?.audioUrl]);
+  }, [track?.audioURL]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const customEvent = e as CustomEvent<Track>;
       const t = customEvent.detail;
 
-      if (!t?.audioUrl) return;
+      console.log("TRACK:", t);
+      console.log("audioURL:", t?.audioURL);
+
+      if (!t?.audioURL) return;
 
       setNowPlaying(t);
       updatePlayback({
@@ -312,7 +318,8 @@ export default function BottomPlayer() {
     };
 
     window.addEventListener("alos:play", handler as EventListener);
-    return () => window.removeEventListener("alos:play", handler as EventListener);
+    return () =>
+      window.removeEventListener("alos:play", handler as EventListener);
   }, []);
 
   const play = async () => {
@@ -325,7 +332,9 @@ export default function BottomPlayer() {
       await a.play();
       setIsPlaying(true);
       updatePlayback({ isPlaying: true });
-    } catch {}
+    } catch (err) {
+      console.error("Play failed:", err);
+    }
   };
 
   const pause = () => {
@@ -374,7 +383,7 @@ export default function BottomPlayer() {
 
   if (!visible) return null;
 
-  const showPremium = !!track?.audioUrl;
+  const showPremium = !!track?.audioURL;
 
   return (
     <>
@@ -396,7 +405,11 @@ export default function BottomPlayer() {
             <div
               className="flex min-w-0 cursor-pointer items-center gap-3 md:w-[320px] md:shrink-0 md:cursor-default"
               onClick={() => {
-                if (typeof window !== "undefined" && window.innerWidth < 768 && track) {
+                if (
+                  typeof window !== "undefined" &&
+                  window.innerWidth < 768 &&
+                  track
+                ) {
                   setMobileOpen(true);
                 }
               }}
@@ -406,7 +419,9 @@ export default function BottomPlayer() {
                   <>
                     <div
                       className={`absolute -inset-2 rounded-2xl blur-xl opacity-70 ${
-                        isPlaying ? "animate-[alosGlow_1.8s_ease-in-out_infinite]" : ""
+                        isPlaying
+                          ? "animate-[alosGlow_1.8s_ease-in-out_infinite]"
+                          : ""
                       }`}
                       style={{
                         background:
@@ -415,7 +430,9 @@ export default function BottomPlayer() {
                     />
                     <div
                       className={`absolute -inset-[3px] rounded-2xl ${
-                        isPlaying ? "animate-[alosRing_2.2s_linear_infinite]" : ""
+                        isPlaying
+                          ? "animate-[alosRing_2.2s_linear_infinite]"
+                          : ""
                       }`}
                       style={{
                         background:
@@ -435,10 +452,10 @@ export default function BottomPlayer() {
                 )}
 
                 <div className="h-12 w-12 overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:h-14 sm:w-14">
-                  {track?.coverUrl ? (
+                  {track?.coverURL ? (
                     <img
-                      src={track.coverUrl}
-                      alt={track.title}
+                      src={track.coverURL}
+                      alt={track.title || "Cover"}
                       className="h-full w-full object-cover"
                     />
                   ) : (
@@ -490,7 +507,8 @@ export default function BottomPlayer() {
                             height: `${Math.round(lv * 100)}%`,
                             background:
                               "linear-gradient(180deg, rgba(236,72,153,.95), rgba(168,85,247,.95), rgba(59,130,246,.95))",
-                            opacity: i / levels.length <= progressPct / 100 ? 1 : 0.22,
+                            opacity:
+                              i / levels.length <= progressPct / 100 ? 1 : 0.22,
                             boxShadow:
                               i / levels.length <= progressPct / 100
                                 ? "0 0 14px rgba(168,85,247,.22)"
@@ -511,7 +529,9 @@ export default function BottomPlayer() {
                         e.currentTarget as HTMLDivElement
                       ).getBoundingClientRect();
                       const pct = (e.clientX - rect.left) / rect.width;
-                      setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
+                      setSeekPreview(
+                        Math.max(0, Math.min(duration, pct * duration))
+                      );
                     }}
                     onMouseMove={(e) => {
                       if (!seeking || !duration) return;
@@ -519,7 +539,9 @@ export default function BottomPlayer() {
                         e.currentTarget as HTMLDivElement
                       ).getBoundingClientRect();
                       const pct = (e.clientX - rect.left) / rect.width;
-                      setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
+                      setSeekPreview(
+                        Math.max(0, Math.min(duration, pct * duration))
+                      );
                     }}
                     onMouseUp={() => {
                       if (!duration) return;
@@ -537,7 +559,9 @@ export default function BottomPlayer() {
                         e.currentTarget as HTMLDivElement
                       ).getBoundingClientRect();
                       const pct = (touch.clientX - rect.left) / rect.width;
-                      setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
+                      setSeekPreview(
+                        Math.max(0, Math.min(duration, pct * duration))
+                      );
                     }}
                     onTouchMove={(e) => {
                       if (!duration) return;
@@ -546,7 +570,9 @@ export default function BottomPlayer() {
                         e.currentTarget as HTMLDivElement
                       ).getBoundingClientRect();
                       const pct = (touch.clientX - rect.left) / rect.width;
-                      setSeekPreview(Math.max(0, Math.min(duration, pct * duration)));
+                      setSeekPreview(
+                        Math.max(0, Math.min(duration, pct * duration))
+                      );
                     }}
                     onTouchEnd={() => {
                       if (!duration) return;
