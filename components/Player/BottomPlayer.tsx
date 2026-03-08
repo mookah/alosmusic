@@ -7,11 +7,6 @@ import {
   setNowPlaying,
   restorePlayerFromStorage,
   updatePlayback,
-  playNext,
-  playPrev,
-  toggleShuffle,
-  cycleRepeatMode,
-  type RepeatMode,
 } from "@/lib/playerStore";
 import { incrementSongPlays } from "@/lib/songStats";
 import MobileNowPlaying from "@/components/Player/MobileNowPlaying";
@@ -23,108 +18,179 @@ function fmtTime(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-let GLOBAL_AUDIO: HTMLAudioElement | null = null;
-
-type AnyTrack = Track & {
-  audioUrl?: string;
-  audioURL?: string;
-  coverUrl?: string;
-  coverURL?: string;
-};
-
-function getAudioSrc(track: AnyTrack | null | undefined) {
-  return track?.audioURL || track?.audioUrl || "";
+function clamp01(x: number) {
+  return Math.max(0, Math.min(1, x));
 }
 
-function getCoverSrc(track: AnyTrack | null | undefined) {
-  return track?.coverURL || track?.coverUrl || "";
+/** one global audio element */
+let GLOBAL_AUDIO: HTMLAudioElement | null = null;
+
+/** one global WebAudio chain */
+let GLOBAL_CTX: AudioContext | null = null;
+let GLOBAL_ANALYSER: AnalyserNode | null = null;
+let GLOBAL_SRC: MediaElementAudioSourceNode | null = null;
+let GLOBAL_ATTACHED_AUDIO: HTMLAudioElement | null = null;
+
+/** avoid double counting plays */
+const countedTrackIds = new Set<string>();
+
+function getTrackAudioUrl(track: Partial<Track> | null | undefined) {
+  if (!track) return "";
+  const t = track as Track & {
+    audioURL?: string;
+    audioUrl?: string;
+  };
+  return t.audioUrl || t.audioURL || "";
+}
+
+function getTrackCoverUrl(track: Partial<Track> | null | undefined) {
+  if (!track) return "";
+  const t = track as Track & {
+    coverURL?: string;
+    coverUrl?: string;
+  };
+  return t.coverUrl || t.coverURL || "";
+}
+
+function normalizeTrack(track: Partial<Track> | null | undefined): Track | null {
+  if (!track || !track.id) return null;
+
+  return {
+    id: String(track.id),
+    title: track.title || "Untitled",
+    artist: track.artist || "Unknown Artist",
+    genre: track.genre || "",
+    coverUrl: getTrackCoverUrl(track),
+    audioUrl: getTrackAudioUrl(track),
+  };
+}
+
+function ensureGlobalAudio() {
+  if (typeof window === "undefined") return null;
+
+  if (!GLOBAL_AUDIO) {
+    GLOBAL_AUDIO = new Audio();
+    GLOBAL_AUDIO.preload = "metadata";
+    GLOBAL_AUDIO.crossOrigin = "anonymous";
+  }
+
+  return GLOBAL_AUDIO;
+}
+
+function ensureAnalyser(audio: HTMLAudioElement) {
+  if (typeof window === "undefined") return;
+
+  const AudioCtx =
+    window.AudioContext ||
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext;
+
+  if (!AudioCtx) return;
+
+  if (!GLOBAL_CTX) {
+    GLOBAL_CTX = new AudioCtx();
+  }
+
+  if (!GLOBAL_ANALYSER) {
+    GLOBAL_ANALYSER = GLOBAL_CTX.createAnalyser();
+    GLOBAL_ANALYSER.fftSize = 64;
+    GLOBAL_ANALYSER.smoothingTimeConstant = 0.85;
+    GLOBAL_ANALYSER.connect(GLOBAL_CTX.destination);
+  }
+
+  if (!GLOBAL_SRC || GLOBAL_ATTACHED_AUDIO !== audio) {
+    try {
+      GLOBAL_SRC?.disconnect();
+    } catch {}
+
+    GLOBAL_SRC = GLOBAL_CTX.createMediaElementSource(audio);
+    GLOBAL_SRC.connect(GLOBAL_ANALYSER);
+    GLOBAL_ATTACHED_AUDIO = audio;
+  }
 }
 
 export default function BottomPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const countedPlayRef = useRef<string | null>(null);
-  const seekingRef = useRef(false);
-  const shouldAutoPlayRef = useRef(false);
+  const countedPlayRef = useRef(false);
 
-  const [visible, setVisible] = useState(true);
-  const [track, setTrack] = useState<AnyTrack | null>(null);
+  const [track, setTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-
   const [volume, setVolume] = useState(0.85);
   const [muted, setMuted] = useState(false);
+  const [queue, setQueue] = useState<Track[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(-1);
 
-  const [shuffle, setShuffleState] = useState(false);
-  const [repeatMode, setRepeatModeState] = useState<RepeatMode>("off");
-
-  const [seeking, setSeeking] = useState(false);
-  const [seekPreview, setSeekPreview] = useState(0);
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  const BAR_COUNT = 34;
-  const [levels, setLevels] = useState<number[]>(
-    Array.from({ length: BAR_COUNT }, () => 0.12)
-  );
-
-  const audioSrc = getAudioSrc(track);
-  const coverSrc = getCoverSrc(track);
+  const progress = useMemo(() => {
+    if (!duration || duration <= 0) return 0;
+    return clamp01(currentTime / duration);
+  }, [currentTime, duration]);
 
   useEffect(() => {
-    seekingRef.current = seeking;
-  }, [seeking]);
+    const audio = ensureGlobalAudio();
+    if (!audio) return;
 
-  const progressPct = useMemo(() => {
-    const d = duration || 0;
-    const t = seeking ? seekPreview : currentTime;
-    if (!d) return 0;
-    return Math.max(0, Math.min(100, (t / d) * 100));
-  }, [currentTime, duration, seeking, seekPreview]);
+    audioRef.current = audio;
 
-  useEffect(() => {
-    if (!GLOBAL_AUDIO) {
-      GLOBAL_AUDIO = new Audio();
-      GLOBAL_AUDIO.preload = "metadata";
+    const restored = restorePlayerFromStorage();
+    if (restored) {
+      setTrack(restored.track);
+      setIsPlaying(restored.isPlaying);
+      setCurrentTime(restored.currentTime);
+      setDuration(restored.duration);
+      setVolume(restored.volume);
+      setMuted(restored.muted);
+      setQueue(restored.queue);
+      setCurrentIndex(restored.currentIndex);
+
+      audio.volume = restored.volume;
+      audio.muted = restored.muted;
+
+      const restoredSrc = getTrackAudioUrl(restored.track);
+      if (restored.track && restoredSrc) {
+        if (audio.src !== restoredSrc) {
+          audio.src = restoredSrc;
+        }
+
+        if (restored.currentTime > 0) {
+          audio.currentTime = restored.currentTime;
+        }
+      }
+    } else {
+      audio.volume = 0.85;
+      audio.muted = false;
     }
 
-    const a = GLOBAL_AUDIO;
-    audioRef.current = a;
+    ensureAnalyser(audio);
 
-    const onAudioError = () => {
-      console.error("GLOBAL_AUDIO error:", {
-        src: a.currentSrc || a.src,
-        networkState: a.networkState,
-        readyState: a.readyState,
-        errorCode: a.error?.code ?? null,
+    const onLoadedMetadata = () => {
+      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+      updatePlayback({
+        duration: Number.isFinite(audio.duration) ? audio.duration : 0,
       });
     };
 
-    a.addEventListener("error", onAudioError);
+    const onTimeUpdate = () => {
+      setCurrentTime(audio.currentTime || 0);
+      updatePlayback({
+        currentTime: audio.currentTime || 0,
+      });
 
-    const snap = restorePlayerFromStorage() as {
-      track: AnyTrack | null;
-      isPlaying?: boolean;
-      currentTime?: number;
-      duration?: number;
-      volume?: number;
-      muted?: boolean;
-      shuffle?: boolean;
-      repeatMode?: RepeatMode;
+      if (
+        audio.duration > 0 &&
+        audio.currentTime / audio.duration >= 0.5 &&
+        track?.id &&
+        !countedPlayRef.current &&
+        !countedTrackIds.has(track.id)
+      ) {
+        countedPlayRef.current = true;
+        countedTrackIds.add(track.id);
+        incrementSongPlays(track.id).catch((err) => {
+          console.error("Failed to increment song plays", err);
+        });
+      }
     };
-
-    setTrack(snap.track || null);
-    setIsPlaying(false);
-    setCurrentTime(Number(snap.currentTime || 0));
-    setDuration(Number(snap.duration || 0));
-    setVolume(typeof snap.volume === "number" ? snap.volume : 0.85);
-    setMuted(!!snap.muted);
-    setShuffleState(!!snap.shuffle);
-    setRepeatModeState(snap.repeatMode ?? "off");
-
-    a.volume = typeof snap.volume === "number" ? snap.volume : 0.85;
-    a.muted = !!snap.muted;
 
     const onPlay = () => {
       setIsPlaying(true);
@@ -136,709 +202,350 @@ export default function BottomPlayer() {
       updatePlayback({ isPlaying: false });
     };
 
-    const onLoaded = () => {
-      const d = a.duration || 0;
-      setDuration(d);
-      updatePlayback({ duration: d });
-    };
-
-    const onTime = () => {
-      const t = a.currentTime || 0;
-      if (!seekingRef.current) {
-        setCurrentTime(t);
-      }
-      updatePlayback({ currentTime: t });
-    };
-
     const onEnded = () => {
-      playNext();
-    };
+      const nextIndex =
+        currentIndex >= 0 && currentIndex < queue.length - 1
+          ? currentIndex + 1
+          : -1;
 
-    a.addEventListener("play", onPlay);
-    a.addEventListener("pause", onPause);
-    a.addEventListener("loadedmetadata", onLoaded);
-    a.addEventListener("timeupdate", onTime);
-    a.addEventListener("ended", onEnded);
-
-    const unsub = subscribePlayer((s) => {
-      const next = s as typeof s & {
-        track: AnyTrack | null;
-        shuffle?: boolean;
-        repeatMode?: RepeatMode;
-      };
-
-      setTrack(next.track);
-      setVisible(true);
-      setIsPlaying(!!next.isPlaying);
-      setCurrentTime(Number(next.currentTime || 0));
-      setDuration(Number(next.duration || 0));
-      setVolume(typeof next.volume === "number" ? next.volume : 0.85);
-      setMuted(!!next.muted);
-      setShuffleState(!!next.shuffle);
-      setRepeatModeState(next.repeatMode ?? "off");
-    });
-
-    return () => {
-      a.removeEventListener("error", onAudioError);
-      a.removeEventListener("play", onPlay);
-      a.removeEventListener("pause", onPause);
-      a.removeEventListener("loadedmetadata", onLoaded);
-      a.removeEventListener("timeupdate", onTime);
-      a.removeEventListener("ended", onEnded);
-      unsub();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!track?.id || !isPlaying) return;
-    if (countedPlayRef.current === track.id) return;
-
-    countedPlayRef.current = track.id;
-    incrementSongPlays(track.id);
-  }, [track?.id, isPlaying]);
-
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-    a.volume = Math.max(0, Math.min(1, volume));
-    updatePlayback({ volume });
-  }, [volume]);
-
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-    a.muted = muted;
-    updatePlayback({ muted });
-  }, [muted]);
-
-  useEffect(() => {
-    const tick = () => {
-      if (!isPlaying) {
-        setLevels((prev) => prev.map((p) => 0.85 * p + 0.15 * 0.12));
+      if (nextIndex >= 0) {
+        const nextTrack = normalizeTrack(queue[nextIndex]);
+        if (nextTrack) {
+          countedPlayRef.current = false;
+          setNowPlaying(nextTrack, queue, nextIndex);
+        }
       } else {
-        setLevels((prev) => prev.map(() => 0.18 + Math.random() * 0.72));
-      }
-
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(tick);
-
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    };
-  }, [isPlaying]);
-
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a || !audioSrc) return;
-
-    const currentSrc = a.currentSrc || a.src;
-    if (currentSrc === audioSrc) return;
-
-    countedPlayRef.current = null;
-
-    a.pause();
-    a.src = audioSrc;
-    a.load();
-
-    const s = restorePlayerFromStorage() as {
-      track?: AnyTrack | null;
-      currentTime?: number;
-    };
-
-    const savedSrc = getAudioSrc(s.track || null);
-    const startAt = savedSrc === audioSrc ? Number(s.currentTime || 0) : 0;
-
-    const onLoadedMetadata = () => {
-      try {
-        a.currentTime = Math.max(0, startAt);
-      } catch {}
-
-      setCurrentTime(a.currentTime || 0);
-      setDuration(a.duration || 0);
-
-      updatePlayback({
-        currentTime: a.currentTime || 0,
-        duration: a.duration || 0,
-      });
-    };
-
-    const onCanPlay = async () => {
-      if (!shouldAutoPlayRef.current) return;
-
-      try {
-        await a.play();
-        setIsPlaying(true);
-        updatePlayback({ isPlaying: true });
-      } catch (err) {
-        console.error("Track play failed:", err);
         setIsPlaying(false);
         updatePlayback({ isPlaying: false });
-      } finally {
-        shouldAutoPlayRef.current = false;
       }
     };
 
     const onError = () => {
-      console.error("Audio element error:", {
-        src: audioSrc,
-        currentSrc: a.currentSrc || a.src,
-        networkState: a.networkState,
-        readyState: a.readyState,
-        errorCode: a.error?.code ?? null,
+      const mediaError = audio.error;
+      const errorInfo = {
+        src: audio.currentSrc || audio.src || "",
+        code: mediaError?.code ?? null,
+        message:
+          mediaError?.code === 1
+            ? "MEDIA_ERR_ABORTED"
+            : mediaError?.code === 2
+            ? "MEDIA_ERR_NETWORK"
+            : mediaError?.code === 3
+            ? "MEDIA_ERR_DECODE"
+            : mediaError?.code === 4
+            ? "MEDIA_ERR_SRC_NOT_SUPPORTED"
+            : "Unknown audio error",
+        readyState: audio.readyState,
+        networkState: audio.networkState,
+        currentTime: audio.currentTime,
+      };
+
+      console.error("GLOBAL_AUDIO error", errorInfo);
+
+      setIsPlaying(false);
+      updatePlayback({ isPlaying: false });
+    };
+
+    const onCanPlay = () => {
+      console.log("GLOBAL_AUDIO canplay", {
+        src: audio.currentSrc || audio.src,
       });
     };
 
-    a.addEventListener("loadedmetadata", onLoadedMetadata);
-    a.addEventListener("canplay", onCanPlay, { once: true });
-    a.addEventListener("error", onError);
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+    audio.addEventListener("canplay", onCanPlay);
 
-    return () => {
-      a.removeEventListener("loadedmetadata", onLoadedMetadata);
-      a.removeEventListener("canplay", onCanPlay);
-      a.removeEventListener("error", onError);
-    };
-  }, [audioSrc]);
+    const unsub = subscribePlayer((state) => {
+      const nextTrack = normalizeTrack(state.track);
+      const nextQueue = (state.queue || [])
+        .map((item) => normalizeTrack(item))
+        .filter(Boolean) as Track[];
 
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const customEvent = e as CustomEvent<AnyTrack>;
-      const t = customEvent.detail;
+      setTrack(nextTrack);
+      setQueue(nextQueue);
+      setCurrentIndex(state.currentIndex);
+      setVolume(state.volume);
+      setMuted(state.muted);
 
-      const nextAudio = getAudioSrc(t);
-      if (!nextAudio) {
-        console.error("No audio url on track:", t);
+      audio.volume = state.volume;
+      audio.muted = state.muted;
+
+      if (!nextTrack) {
+        if (!audio.paused) {
+          audio.pause();
+        }
+        audio.removeAttribute("src");
+        audio.load();
+        setCurrentTime(0);
+        setDuration(0);
+        countedPlayRef.current = false;
         return;
       }
 
-      countedPlayRef.current = null;
-      shouldAutoPlayRef.current = true;
+      const src = getTrackAudioUrl(nextTrack);
 
-      setNowPlaying(t);
-      updatePlayback({
-        track: t,
-        isPlaying: true,
-        currentTime: 0,
-        duration: 0,
-      });
-
-      setTrack(t);
-      setVisible(true);
-    };
-
-    window.addEventListener("alos:play", handler as EventListener);
-    return () =>
-      window.removeEventListener("alos:play", handler as EventListener);
-  }, []);
-
-  const play = async () => {
-    const a = audioRef.current;
-    if (!a) return;
-
-    try {
-      shouldAutoPlayRef.current = true;
-
-      if (!a.src && audioSrc) {
-        a.src = audioSrc;
-        a.load();
+      if (!src) {
+        console.error("No audio URL found for track", nextTrack);
+        if (!audio.paused) audio.pause();
+        setIsPlaying(false);
+        updatePlayback({ isPlaying: false });
+        return;
       }
 
-      a.volume = Math.max(0, Math.min(1, volume));
-      a.muted = muted;
+      if (audio.src !== src) {
+        countedPlayRef.current = false;
 
-      await a.play();
+        console.log("Loading track", {
+          id: nextTrack.id,
+          title: nextTrack.title,
+          src,
+        });
 
-      setIsPlaying(true);
-      updatePlayback({ isPlaying: true });
+        audio.src = src;
+        audio.load();
+
+        if (state.currentTime > 0) {
+          const seekAfterMeta = () => {
+            try {
+              audio.currentTime = state.currentTime;
+            } catch {}
+            audio.removeEventListener("loadedmetadata", seekAfterMeta);
+          };
+          audio.addEventListener("loadedmetadata", seekAfterMeta);
+        } else {
+          setCurrentTime(0);
+        }
+      }
+
+      if (state.isPlaying) {
+        const playNow = async () => {
+          try {
+            if (GLOBAL_CTX?.state === "suspended") {
+              await GLOBAL_CTX.resume();
+            }
+            await audio.play();
+          } catch (err) {
+            console.error("Audio play failed", {
+              err,
+              src: audio.currentSrc || audio.src,
+            });
+            setIsPlaying(false);
+            updatePlayback({ isPlaying: false });
+          }
+        };
+
+        void playNow();
+      } else {
+        audio.pause();
+      }
+    });
+
+    return () => {
+      unsub();
+      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+      audio.removeEventListener("canplay", onCanPlay);
+    };
+  }, [currentIndex, queue.length, track?.id]);
+
+  const handleSeek = (value: number) => {
+    const audio = audioRef.current;
+    if (!audio || !duration || duration <= 0) return;
+
+    const nextTime = clamp01(value) * duration;
+    audio.currentTime = nextTime;
+    setCurrentTime(nextTime);
+    updatePlayback({ currentTime: nextTime });
+  };
+
+  const handleTogglePlay = async () => {
+    const audio = audioRef.current;
+    if (!audio || !track) return;
+
+    const src = getTrackAudioUrl(track);
+    if (!src) {
+      console.error("Cannot play: missing audio URL", track);
+      return;
+    }
+
+    try {
+      if (GLOBAL_CTX?.state === "suspended") {
+        await GLOBAL_CTX.resume();
+      }
+
+      if (audio.paused) {
+        if (audio.src !== src) {
+          audio.src = src;
+          audio.load();
+        }
+        await audio.play();
+      } else {
+        audio.pause();
+      }
     } catch (err) {
-      console.error("Play failed:", err);
-      setIsPlaying(false);
-      updatePlayback({ isPlaying: false });
+      console.error("Toggle play failed", {
+        err,
+        src: audio.currentSrc || audio.src,
+      });
     }
   };
 
-  const pause = () => {
-    const a = audioRef.current;
-    if (!a) return;
-
-    a.pause();
-    setIsPlaying(false);
-    updatePlayback({ isPlaying: false });
+  const handlePrev = () => {
+    if (!queue.length || currentIndex <= 0) return;
+    const prevTrack = normalizeTrack(queue[currentIndex - 1]);
+    if (!prevTrack) return;
+    countedPlayRef.current = false;
+    setNowPlaying(prevTrack, queue, currentIndex - 1);
   };
 
-  const stop = () => {
-    const a = audioRef.current;
-    if (!a) return;
-
-    a.pause();
-    a.currentTime = 0;
-
-    setIsPlaying(false);
-    setCurrentTime(0);
-
-    updatePlayback({
-      isPlaying: false,
-      currentTime: 0,
-    });
+  const handleNext = () => {
+    if (!queue.length || currentIndex >= queue.length - 1) return;
+    const nextTrack = normalizeTrack(queue[currentIndex + 1]);
+    if (!nextTrack) return;
+    countedPlayRef.current = false;
+    setNowPlaying(nextTrack, queue, currentIndex + 1);
   };
 
-  const close = () => {
-    const a = audioRef.current;
-    if (a) {
-      a.pause();
-      a.currentTime = 0;
-      a.src = "";
-      a.load();
+  const handleVolume = (value: number) => {
+    const audio = audioRef.current;
+    const nextVolume = clamp01(value);
+
+    setVolume(nextVolume);
+    if (audio) audio.volume = nextVolume;
+
+    if (nextVolume > 0 && muted) {
+      setMuted(false);
+      if (audio) audio.muted = false;
+      updatePlayback({ volume: nextVolume, muted: false });
+      return;
     }
 
-    countedPlayRef.current = null;
-    shouldAutoPlayRef.current = false;
-
-    setNowPlaying(null);
-    updatePlayback({
-      track: null,
-      isPlaying: false,
-      currentTime: 0,
-      duration: 0,
-    });
-
-    setTrack(null);
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setDuration(0);
-    setVisible(false);
-    setMobileOpen(false);
+    updatePlayback({ volume: nextVolume });
   };
 
-  const seekTo = (t: number) => {
-    const a = audioRef.current;
-    if (!a || !duration) return;
-
-    a.currentTime = Math.max(0, Math.min(duration, t));
-    setCurrentTime(a.currentTime);
-    updatePlayback({ currentTime: a.currentTime });
+  const handleMute = () => {
+    const audio = audioRef.current;
+    const nextMuted = !muted;
+    setMuted(nextMuted);
+    if (audio) audio.muted = nextMuted;
+    updatePlayback({ muted: nextMuted });
   };
 
-  if (!visible) return null;
-
-  const showPremium = !!audioSrc;
+  if (!track) return null;
 
   return (
     <>
+      <div className="fixed bottom-0 left-0 right-0 z-40 hidden border-t border-white/10 bg-black/85 backdrop-blur md:block">
+        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="h-12 w-12 overflow-hidden rounded-lg bg-white/10">
+              {getTrackCoverUrl(track) ? (
+                <img
+                  src={getTrackCoverUrl(track)}
+                  alt={track.title}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="grid h-full w-full place-items-center text-white/50">
+                  ♪
+                </div>
+              )}
+            </div>
+
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-white">
+                {track.title}
+              </div>
+              <div className="truncate text-xs text-white/60">
+                {track.artist}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex w-full max-w-xl flex-col items-center gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrev}
+                className="rounded-md border border-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
+              >
+                Prev
+              </button>
+              <button
+                onClick={handleTogglePlay}
+                className="rounded-md bg-fuchsia-600 px-4 py-2 text-sm font-semibold text-white hover:bg-fuchsia-500"
+              >
+                {isPlaying ? "Pause" : "Play"}
+              </button>
+              <button
+                onClick={handleNext}
+                className="rounded-md border border-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
+              >
+                Next
+              </button>
+            </div>
+
+            <div className="flex w-full items-center gap-3">
+              <span className="w-10 text-right text-xs text-white/60">
+                {fmtTime(currentTime)}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.001}
+                value={progress}
+                onChange={(e) => handleSeek(Number(e.target.value))}
+                className="w-full"
+              />
+              <span className="w-10 text-xs text-white/60">
+                {fmtTime(duration)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex min-w-[150px] items-center justify-end gap-2">
+            <button
+              onClick={handleMute}
+              className="rounded-md border border-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
+            >
+              {muted ? "Unmute" : "Mute"}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={muted ? 0 : volume}
+              onChange={(e) => handleVolume(Number(e.target.value))}
+              className="w-24"
+            />
+          </div>
+        </div>
+      </div>
+
       <MobileNowPlaying
-        open={mobileOpen}
-        onClose={() => setMobileOpen(false)}
         track={track}
         isPlaying={isPlaying}
         currentTime={currentTime}
         duration={duration}
-        onPlay={play}
-        onPause={pause}
-        onStop={stop}
-        onSeek={seekTo}
+        volume={volume}
+        muted={muted}
+        onTogglePlay={handleTogglePlay}
+        onPrev={handlePrev}
+        onNext={handleNext}
+        onSeek={handleSeek}
+        onVolume={handleVolume}
+        onMute={handleMute}
       />
-
-      <div className="fixed bottom-14 left-0 right-0 z-[60] border-t border-white/10 bg-black/75 backdrop-blur md:bottom-0">
-        <div className="mx-auto max-w-[1400px] px-3 py-3 sm:px-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
-            <div
-              className="flex min-w-0 cursor-pointer items-center gap-3 md:w-[320px] md:shrink-0 md:cursor-default"
-              onClick={() => {
-                if (
-                  typeof window !== "undefined" &&
-                  window.innerWidth < 768 &&
-                  track
-                ) {
-                  setMobileOpen(true);
-                }
-              }}
-            >
-              <div className="relative shrink-0">
-                {showPremium && (
-                  <>
-                    <div
-                      className={`absolute -inset-2 rounded-2xl blur-xl opacity-70 ${
-                        isPlaying
-                          ? "animate-[alosGlow_1.8s_ease-in-out_infinite]"
-                          : ""
-                      }`}
-                      style={{
-                        background:
-                          "radial-gradient(120px circle at 50% 50%, rgba(236,72,153,.32), rgba(168,85,247,.28), rgba(59,130,246,.22), transparent 65%)",
-                      }}
-                    />
-                    <div
-                      className={`absolute -inset-[3px] rounded-2xl ${
-                        isPlaying
-                          ? "animate-[alosRing_2.2s_linear_infinite]"
-                          : ""
-                      }`}
-                      style={{
-                        background:
-                          "linear-gradient(90deg, rgba(236,72,153,.9), rgba(168,85,247,.9), rgba(59,130,246,.9))",
-                        opacity: 0.35,
-                        filter: "blur(0px)",
-                        maskImage:
-                          "linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)",
-                        WebkitMaskImage:
-                          "linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)",
-                        padding: "2px",
-                        WebkitMaskComposite: "xor",
-                        maskComposite: "exclude",
-                      }}
-                    />
-                  </>
-                )}
-
-                <div className="h-12 w-12 overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:h-14 sm:w-14">
-                  {coverSrc ? (
-                    <img
-                      src={coverSrc}
-                      alt={track?.title || "Cover"}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="grid h-full w-full place-items-center text-xs text-white/30">
-                      ♪
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold sm:text-[15px]">
-                  {track?.title || "Select a song"}
-                </div>
-
-                <div className="truncate text-xs text-white/60 sm:text-sm">
-                  {track
-                    ? `${track.artist}${track.genre ? ` • ${track.genre}` : ""}`
-                    : "Go to Browse and click Play"}
-                </div>
-              </div>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  close();
-                }}
-                className="shrink-0 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 md:hidden"
-                title="Close"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-10 shrink-0 text-right text-[11px] text-white/50">
-                  {fmtTime(seeking ? seekPreview : currentTime)}
-                </div>
-
-                <div className="relative flex-1 overflow-visible">
-                  <div className="pointer-events-none absolute -top-5 left-0 right-0 h-5 sm:-top-6 sm:h-6">
-                    <div className="flex h-full items-end gap-[1.5px] sm:gap-[2px]">
-                      {levels.map((lv, i) => (
-                        <span
-                          key={i}
-                          className="w-[4px] rounded-sm sm:w-[6px]"
-                          style={{
-                            height: `${Math.round(lv * 100)}%`,
-                            background:
-                              "linear-gradient(180deg, rgba(236,72,153,.95), rgba(168,85,247,.95), rgba(59,130,246,.95))",
-                            opacity:
-                              i / levels.length <= progressPct / 100 ? 1 : 0.22,
-                            boxShadow:
-                              i / levels.length <= progressPct / 100
-                                ? "0 0 14px rgba(168,85,247,.22)"
-                                : "none",
-                            filter: "saturate(1.2) brightness(1.05)",
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div
-                    className="relative h-2 cursor-pointer overflow-hidden rounded-full bg-white/10"
-                    onMouseDown={(e) => {
-                      if (!duration) return;
-                      setSeeking(true);
-                      const rect = (
-                        e.currentTarget as HTMLDivElement
-                      ).getBoundingClientRect();
-                      const pct = (e.clientX - rect.left) / rect.width;
-                      setSeekPreview(
-                        Math.max(0, Math.min(duration, pct * duration))
-                      );
-                    }}
-                    onMouseMove={(e) => {
-                      if (!seeking || !duration) return;
-                      const rect = (
-                        e.currentTarget as HTMLDivElement
-                      ).getBoundingClientRect();
-                      const pct = (e.clientX - rect.left) / rect.width;
-                      setSeekPreview(
-                        Math.max(0, Math.min(duration, pct * duration))
-                      );
-                    }}
-                    onMouseUp={() => {
-                      if (!duration) return;
-                      setSeeking(false);
-                      seekTo(seekPreview);
-                    }}
-                    onMouseLeave={() => {
-                      if (seeking) setSeeking(false);
-                    }}
-                    onTouchStart={(e) => {
-                      if (!duration) return;
-                      setSeeking(true);
-                      const touch = e.touches[0];
-                      const rect = (
-                        e.currentTarget as HTMLDivElement
-                      ).getBoundingClientRect();
-                      const pct = (touch.clientX - rect.left) / rect.width;
-                      setSeekPreview(
-                        Math.max(0, Math.min(duration, pct * duration))
-                      );
-                    }}
-                    onTouchMove={(e) => {
-                      if (!duration) return;
-                      const touch = e.touches[0];
-                      const rect = (
-                        e.currentTarget as HTMLDivElement
-                      ).getBoundingClientRect();
-                      const pct = (touch.clientX - rect.left) / rect.width;
-                      setSeekPreview(
-                        Math.max(0, Math.min(duration, pct * duration))
-                      );
-                    }}
-                    onTouchEnd={() => {
-                      if (!duration) return;
-                      setSeeking(false);
-                      seekTo(seekPreview);
-                    }}
-                  >
-                    <div
-                      className="absolute inset-y-0 left-0 rounded-full bg-purple-500 transition-[width] duration-150"
-                      style={{ width: `${progressPct}%` }}
-                    />
-                    <div
-                      className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow-[0_0_18px_rgba(168,85,247,.8)]"
-                      style={{ left: `calc(${progressPct}% - 6px)` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="w-10 shrink-0 text-[11px] text-white/50">
-                  {fmtTime(duration)}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 md:justify-end">
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={playPrev}
-                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
-                  title="Previous"
-                >
-                  ⏮
-                </button>
-
-                {isPlaying ? (
-                  <button
-                    onClick={pause}
-                    className="relative overflow-hidden rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 sm:px-5"
-                  >
-                    <span className="absolute -inset-3 pointer-events-none rounded-2xl opacity-60 blur-xl [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
-                    <span className="relative inline-flex items-center gap-2">
-                      <span className="inline-flex h-4 items-end gap-[2px]">
-                        <span className="alosBtnBar alosBtnBar1" />
-                        <span className="alosBtnBar alosBtnBar2" />
-                        <span className="alosBtnBar alosBtnBar3" />
-                        <span className="alosBtnBar alosBtnBar4" />
-                      </span>
-                      Pause
-                    </span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={play}
-                    className="relative overflow-hidden rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold hover:bg-purple-500 sm:px-5"
-                  >
-                    <span className="absolute -inset-3 pointer-events-none rounded-2xl opacity-60 blur-xl [background:radial-gradient(120px_circle_at_50%_50%,rgba(168,85,247,0.45),transparent_60%)]" />
-                    <span className="relative inline-flex items-center gap-2">
-                      <span className="inline-flex h-4 items-end gap-[2px] opacity-80">
-                        <span className="alosBtnBar alosBtnBar1" />
-                        <span className="alosBtnBar alosBtnBar2" />
-                        <span className="alosBtnBar alosBtnBar3" />
-                        <span className="alosBtnBar alosBtnBar4" />
-                      </span>
-                      Play
-                    </span>
-                  </button>
-                )}
-
-                <button
-                  onClick={playNext}
-                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
-                  title="Next"
-                >
-                  ⏭
-                </button>
-
-                <button
-                  onClick={stop}
-                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
-                  title="Stop"
-                >
-                  Stop
-                </button>
-
-                <button
-                  onClick={() => toggleShuffle()}
-                  className={`rounded-xl border px-3 py-2 text-sm hover:bg-white/10 ${
-                    shuffle
-                      ? "border-purple-400 bg-purple-500/20 text-white"
-                      : "border-white/15 bg-white/5"
-                  }`}
-                  title="Shuffle"
-                >
-                  🔀
-                </button>
-
-                <button
-                  onClick={() => cycleRepeatMode()}
-                  className={`rounded-xl border px-3 py-2 text-sm hover:bg-white/10 ${
-                    repeatMode !== "off"
-                      ? "border-purple-400 bg-purple-500/20 text-white"
-                      : "border-white/15 bg-white/5"
-                  }`}
-                  title="Repeat"
-                >
-                  {repeatMode === "one" ? "🔂" : "🔁"}
-                </button>
-
-                <button
-                  onClick={close}
-                  className="hidden rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 md:inline-flex"
-                  title="Close"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="hidden items-center gap-2 md:flex">
-                <button
-                  onClick={() => setMuted((m) => !m)}
-                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
-                  title="Mute"
-                >
-                  {muted || volume === 0 ? "🔇" : volume < 0.5 ? "🔈" : "🔊"}
-                </button>
-
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={muted ? 0 : volume}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setVolume(v);
-                    if (v > 0) setMuted(false);
-                  }}
-                  className="w-28 accent-purple-500"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <style jsx global>{`
-          @keyframes alosGlow {
-            0% {
-              transform: scale(0.98);
-              opacity: 0.55;
-            }
-            50% {
-              transform: scale(1.04);
-              opacity: 0.85;
-            }
-            100% {
-              transform: scale(0.98);
-              opacity: 0.55;
-            }
-          }
-
-          @keyframes alosRing {
-            0% {
-              transform: rotate(0deg);
-              opacity: 0.25;
-            }
-            50% {
-              opacity: 0.45;
-            }
-            100% {
-              transform: rotate(360deg);
-              opacity: 0.25;
-            }
-          }
-
-          .alosBtnBar {
-            width: 4px;
-            border-radius: 3px;
-            background: linear-gradient(
-              180deg,
-              rgba(236, 72, 153, 0.95),
-              rgba(168, 85, 247, 0.95),
-              rgba(59, 130, 246, 0.95)
-            );
-            box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
-            height: 40%;
-            animation: alosBtnEQ 0.9s ease-in-out infinite;
-          }
-
-          .alosBtnBar1 {
-            animation-delay: 0ms;
-          }
-
-          .alosBtnBar2 {
-            animation-delay: 120ms;
-          }
-
-          .alosBtnBar3 {
-            animation-delay: 240ms;
-          }
-
-          .alosBtnBar4 {
-            animation-delay: 360ms;
-          }
-
-          @keyframes alosBtnEQ {
-            0% {
-              height: 30%;
-              opacity: 0.75;
-            }
-            30% {
-              height: 95%;
-              opacity: 1;
-            }
-            60% {
-              height: 45%;
-              opacity: 0.9;
-            }
-            100% {
-              height: 70%;
-              opacity: 0.95;
-            }
-          }
-        `}</style>
-      </div>
     </>
   );
 }

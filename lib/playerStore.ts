@@ -5,13 +5,15 @@ export type Track = {
   genre?: string;
   coverUrl?: string;
   audioUrl?: string;
+
+  // backward compatibility with older Firestore fields
   coverURL?: string;
   audioURL?: string;
 };
 
 export type RepeatMode = "off" | "one" | "all";
 
-type PlayerSnapshot = {
+export type PlayerSnapshot = {
   track: Track | null;
   isPlaying: boolean;
   currentTime: number;
@@ -42,17 +44,32 @@ let state: PlayerSnapshot = { ...DEFAULT_STATE };
 const STORAGE_KEY = "alosmusic_player";
 const listeners = new Set<(state: PlayerSnapshot) => void>();
 
-function cloneState(): PlayerSnapshot {
+function normalizeTrack(track: Track | null | undefined): Track | null {
+  if (!track || !track.id) return null;
+
   return {
-    ...state,
-    queue: [...state.queue],
+    id: String(track.id),
+    title: track.title || "Untitled",
+    artist: track.artist || "Unknown Artist",
+    genre: track.genre || "",
+    coverUrl: track.coverUrl || track.coverURL || "",
+    audioUrl: track.audioUrl || track.audioURL || "",
+    coverURL: track.coverURL || track.coverUrl || "",
+    audioURL: track.audioURL || track.audioUrl || "",
   };
 }
 
-function emit() {
-  persistPlayerToStorage();
-  const snapshot = cloneState();
-  listeners.forEach((listener) => listener(snapshot));
+function normalizeQueue(queue: Track[] | null | undefined): Track[] {
+  if (!Array.isArray(queue)) return [];
+  return queue.map((track) => normalizeTrack(track)).filter(Boolean) as Track[];
+}
+
+function cloneState(): PlayerSnapshot {
+  return {
+    ...state,
+    track: state.track ? { ...state.track } : null,
+    queue: state.queue.map((track) => ({ ...track })),
+  };
 }
 
 function persistPlayerToStorage() {
@@ -65,6 +82,12 @@ function persistPlayerToStorage() {
   }
 }
 
+function emit() {
+  persistPlayerToStorage();
+  const snapshot = cloneState();
+  listeners.forEach((listener) => listener(snapshot));
+}
+
 function clampIndex(index: number, length: number) {
   if (!length) return -1;
   if (index < 0) return 0;
@@ -74,7 +97,7 @@ function clampIndex(index: number, length: number) {
 
 function findTrackIndex(track: Track | null, queue: Track[]) {
   if (!track) return -1;
-  return queue.findIndex((t) => t.id === track.id);
+  return queue.findIndex((item) => item.id === track.id);
 }
 
 function getNextShuffledIndex(length: number, currentIndex: number) {
@@ -88,10 +111,13 @@ function getNextShuffledIndex(length: number, currentIndex: number) {
 }
 
 export function restorePlayerFromStorage(): PlayerSnapshot {
-  if (typeof window === "undefined") return cloneState();
+  if (typeof window === "undefined") {
+    return cloneState();
+  }
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
+
     if (!raw) {
       state = { ...DEFAULT_STATE };
       return cloneState();
@@ -99,9 +125,8 @@ export function restorePlayerFromStorage(): PlayerSnapshot {
 
     const parsed = JSON.parse(raw) as Partial<PlayerSnapshot>;
 
-    const restoredQueue = Array.isArray(parsed.queue) ? parsed.queue : [];
-    const restoredTrack = parsed.track ?? null;
-
+    const restoredTrack = normalizeTrack(parsed.track ?? null);
+    const restoredQueue = normalizeQueue(parsed.queue);
     let restoredIndex =
       typeof parsed.currentIndex === "number" ? parsed.currentIndex : -1;
 
@@ -124,8 +149,9 @@ export function restorePlayerFromStorage(): PlayerSnapshot {
     state = {
       track: restoredTrack,
       isPlaying: !!parsed.isPlaying,
-      currentTime: Number(parsed.currentTime || 0),
-      duration: Number(parsed.duration || 0),
+      currentTime:
+        typeof parsed.currentTime === "number" ? parsed.currentTime : 0,
+      duration: typeof parsed.duration === "number" ? parsed.duration : 0,
       volume: typeof parsed.volume === "number" ? parsed.volume : 0.85,
       muted: !!parsed.muted,
       queue: finalQueue,
@@ -160,7 +186,9 @@ export function subscribePlayer(listener: (state: PlayerSnapshot) => void) {
 }
 
 export function setQueue(tracks: Track[], startIndex = 0) {
-  if (!tracks.length) {
+  const normalizedTracks = normalizeQueue(tracks);
+
+  if (!normalizedTracks.length) {
     state.queue = [];
     state.currentIndex = -1;
     state.track = null;
@@ -171,11 +199,11 @@ export function setQueue(tracks: Track[], startIndex = 0) {
     return;
   }
 
-  const safeIndex = clampIndex(startIndex, tracks.length);
+  const safeIndex = clampIndex(startIndex, normalizedTracks.length);
 
-  state.queue = [...tracks];
+  state.queue = normalizedTracks;
   state.currentIndex = safeIndex;
-  state.track = state.queue[safeIndex];
+  state.track = normalizedTracks[safeIndex];
   state.isPlaying = true;
   state.currentTime = 0;
   state.duration = 0;
@@ -183,8 +211,14 @@ export function setQueue(tracks: Track[], startIndex = 0) {
   emit();
 }
 
-export function setNowPlaying(track: Track | null, queue?: Track[], startIndex?: number) {
-  if (!track) {
+export function setNowPlaying(
+  track: Track | null,
+  queue?: Track[],
+  startIndex?: number
+) {
+  const normalizedTrack = normalizeTrack(track);
+
+  if (!normalizedTrack) {
     state.track = null;
     state.isPlaying = false;
     state.currentTime = 0;
@@ -195,25 +229,28 @@ export function setNowPlaying(track: Track | null, queue?: Track[], startIndex?:
     return;
   }
 
-  if (Array.isArray(queue) && queue.length > 0) {
-    const matchedIndex =
-      typeof startIndex === "number" && queue[startIndex]?.id === track.id
-        ? startIndex
-        : findTrackIndex(track, queue);
+  const normalizedQueue = normalizeQueue(queue);
 
-    state.queue = [...queue];
+  if (normalizedQueue.length > 0) {
+    const matchedIndex =
+      typeof startIndex === "number" &&
+      normalizedQueue[startIndex]?.id === normalizedTrack.id
+        ? startIndex
+        : findTrackIndex(normalizedTrack, normalizedQueue);
+
+    state.queue = normalizedQueue;
     state.currentIndex = matchedIndex >= 0 ? matchedIndex : 0;
-    state.track = state.queue[state.currentIndex] ?? track;
+    state.track = state.queue[state.currentIndex] ?? normalizedTrack;
   } else {
-    const existingIndex = findTrackIndex(track, state.queue);
+    const existingIndex = findTrackIndex(normalizedTrack, state.queue);
 
     if (existingIndex >= 0) {
       state.currentIndex = existingIndex;
       state.track = state.queue[existingIndex];
     } else {
-      state.queue = [track];
+      state.queue = [normalizedTrack];
       state.currentIndex = 0;
-      state.track = track;
+      state.track = normalizedTrack;
     }
   }
 
@@ -244,16 +281,20 @@ export function updatePlayback(
   if (typeof patch === "boolean") {
     state.isPlaying = patch;
   } else {
+    const nextTrack =
+      patch.track !== undefined ? normalizeTrack(patch.track) : state.track;
+
     state = {
       ...state,
       ...patch,
+      track: nextTrack,
     };
 
     if (patch.track !== undefined) {
-      if (patch.track === null) {
+      if (nextTrack === null) {
         state.currentIndex = -1;
       } else {
-        const matchedIndex = findTrackIndex(patch.track, state.queue);
+        const matchedIndex = findTrackIndex(nextTrack, state.queue);
         if (matchedIndex >= 0) {
           state.currentIndex = matchedIndex;
         }
