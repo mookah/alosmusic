@@ -1,26 +1,43 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, db, storage } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import SiteShell from "@/components/Site/SiteShell";
 
 export default function EditProfilePage() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoURL, setPhotoURL] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
-  const user = auth.currentUser;
+  const previewURL = useMemo(() => {
+    if (!photo) return photoURL || "/default-avatar.png";
+    return URL.createObjectURL(photo);
+  }, [photo, photoURL]);
 
   useEffect(() => {
-    async function loadProfile() {
-      if (!user) return;
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+      setAuthReady(true);
+    });
 
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    async function loadProfile(uid: string) {
       try {
-        const refDoc = doc(db, "users", user.uid);
+        setLoadingProfile(true);
+
+        const refDoc = doc(db, "users", uid);
         const snap = await getDoc(refDoc);
 
         if (snap.exists()) {
@@ -31,15 +48,62 @@ export default function EditProfilePage() {
         }
       } catch (error) {
         console.error("Failed to load profile:", error);
+        alert("Failed to load profile.");
+      } finally {
+        setLoadingProfile(false);
       }
     }
 
-    loadProfile();
-  }, [user]);
+    if (!authReady) return;
+
+    if (!user) {
+      setLoadingProfile(false);
+      return;
+    }
+
+    loadProfile(user.uid);
+  }, [user, authReady]);
+
+  useEffect(() => {
+    return () => {
+      if (photo) {
+        URL.revokeObjectURL(previewURL);
+      }
+    };
+  }, [photo, previewURL]);
+
+  function handlePhotoChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+
+    if (!file) {
+      setPhoto(null);
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please select a valid image file.");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Image must be 2MB or less.");
+      return;
+    }
+
+    setPhoto(file);
+  }
 
   async function handleSave() {
     if (!user) {
       alert("Please log in first.");
+      return;
+    }
+
+    const cleanName = name.trim();
+    const cleanBio = bio.trim();
+
+    if (!cleanName) {
+      alert("Artist name is required.");
       return;
     }
 
@@ -49,7 +113,7 @@ export default function EditProfilePage() {
       let uploadedPhotoURL = photoURL;
 
       if (photo) {
-        const storageRef = ref(storage, `profiles/${user.uid}`);
+        const storageRef = ref(storage, `profiles/${user.uid}/avatar`);
         await uploadBytes(storageRef, photo);
         uploadedPhotoURL = await getDownloadURL(storageRef);
       }
@@ -57,14 +121,16 @@ export default function EditProfilePage() {
       await setDoc(
         doc(db, "users", user.uid),
         {
-          name,
-          bio,
+          name: cleanName,
+          bio: cleanBio,
           photoURL: uploadedPhotoURL,
+          updatedAt: new Date().toISOString(),
         },
         { merge: true }
       );
 
       setPhotoURL(uploadedPhotoURL);
+      setPhoto(null);
       alert("Profile updated!");
     } catch (error) {
       console.error("Failed to save profile:", error);
@@ -74,6 +140,30 @@ export default function EditProfilePage() {
     }
   }
 
+  if (!authReady || loadingProfile) {
+    return (
+      <SiteShell title="Edit Profile">
+        <div className="mx-auto max-w-xl">
+          <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-6 text-white">
+            Loading profile...
+          </div>
+        </div>
+      </SiteShell>
+    );
+  }
+
+  if (!user) {
+    return (
+      <SiteShell title="Edit Profile">
+        <div className="mx-auto max-w-xl">
+          <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-6 text-white">
+            Please log in to edit your profile.
+          </div>
+        </div>
+      </SiteShell>
+    );
+  }
+
   return (
     <SiteShell title="Edit Profile">
       <div className="mx-auto max-w-xl space-y-6">
@@ -81,7 +171,7 @@ export default function EditProfilePage() {
           <div className="mb-5 flex items-center gap-4">
             <div className="h-20 w-20 overflow-hidden rounded-full border border-white/10 bg-white/5">
               <img
-                src={photoURL || "/default-avatar.png"}
+                src={previewURL}
                 alt="Profile"
                 className="h-full w-full object-cover"
               />
@@ -89,7 +179,7 @@ export default function EditProfilePage() {
 
             <div>
               <div className="text-lg font-semibold text-white">
-                {name || "Artist Profile"}
+                {name.trim() || "Artist Profile"}
               </div>
               <div className="text-sm text-white/60">
                 Update your artist details and profile photo
@@ -123,7 +213,7 @@ export default function EditProfilePage() {
             <input
               type="file"
               accept="image/*"
-              onChange={(e) => setPhoto(e.target.files?.[0] || null)}
+              onChange={handlePhotoChange}
               className="mt-2 block w-full text-sm text-white file:mr-4 file:rounded-xl file:border-0 file:bg-purple-600 file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-purple-500"
             />
           </div>

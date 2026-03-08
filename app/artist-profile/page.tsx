@@ -1,177 +1,211 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
-import { onAuthStateChanged, User } from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
 import SiteShell from "@/components/Site/SiteShell";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
-type Song = {
-  id: string;
-  title?: string;
-  artist?: string;
-  coverURL?: string;
-  audioURL?: string;
-  streams?: number;
-  uid?: string;
-};
-
-type UserProfile = {
+type Artist = {
+  uid: string;
   name?: string;
-  bio?: string;
+  stageName?: string;
+  fullName?: string;
+  genre?: string;
   photoURL?: string;
+  bio?: string;
 };
 
-export default function ArtistProfile() {
-  const [user, setUser] = useState<User | null>(null);
-  const [songs, setSongs] = useState<Song[]>([]);
+export default function ArtistsPage() {
+  const [artists, setArtists] = useState<Artist[]>([]);
   const [loading, setLoading] = useState(true);
-  const [profileLoading, setProfileLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
 
-  const [name, setName] = useState("");
-  const [bio, setBio] = useState("");
-  const [photoURL, setPhotoURL] = useState("");
+  async function loadArtists() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const snap = await getDocs(collection(db, "users"));
+
+      const list = snap.docs.map((docSnap) => {
+        const data = docSnap.data() as Omit<Artist, "uid">;
+        return {
+          uid: docSnap.id,
+          ...data,
+        };
+      });
+
+      const sorted = list.sort((a, b) => {
+        const aName = (a.stageName || a.name || a.fullName || "").toLowerCase();
+        const bName = (b.stageName || b.name || b.fullName || "").toLowerCase();
+        return aName.localeCompare(bName);
+      });
+
+      setArtists(sorted);
+    } catch (err: any) {
+      console.error("Failed to load artists:", err);
+      setError("Could not load artists right now. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-
-      if (!currentUser) {
-        setLoading(false);
-        setProfileLoading(false);
-        return;
-      }
-
-      try {
-        // load profile
-        const userRef = doc(db, "users", currentUser.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (userSnap.exists()) {
-          const data = userSnap.data() as UserProfile;
-          setName(data.name || currentUser.displayName || "Gospel Artist");
-          setBio(data.bio || "");
-          setPhotoURL(data.photoURL || "");
-        } else {
-          setName(currentUser.displayName || "Gospel Artist");
-          setBio("");
-          setPhotoURL("");
-        }
-
-        setProfileLoading(false);
-
-        // load only this user's songs
-        const songsQuery = query(
-          collection(db, "songs"),
-          where("uid", "==", currentUser.uid)
-        );
-
-        const snap = await getDocs(songsQuery);
-
-        const list = snap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Song[];
-
-        setSongs(list);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setLoading(false);
-      }
-    });
-
-    return () => unsub();
+    loadArtists();
   }, []);
 
-  const totalStreams = songs.reduce((sum, song) => sum + (song.streams || 0), 0);
+  const filteredArtists = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return artists;
+
+    return artists.filter((artist) => {
+      const name = artist.stageName || artist.name || artist.fullName || "";
+      const genre = artist.genre || "";
+      return (
+        name.toLowerCase().includes(q) || genre.toLowerCase().includes(q)
+      );
+    });
+  }, [artists, search]);
 
   return (
-    <SiteShell title="Artist Profile">
+    <SiteShell title="Artists">
       <div className="space-y-6">
-        {/* PROFILE HEADER */}
-        <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03]">
-          <div className="h-40 bg-gradient-to-r from-fuchsia-600/20 via-purple-600/10 to-pink-600/20" />
-
-          <div className="px-6 pb-6">
-            <div className="-mt-14 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-              <div className="flex items-end gap-4">
-                <div className="h-28 w-28 overflow-hidden rounded-full border-4 border-black bg-white/10">
-                  {photoURL ? (
-                    <img
-                      src={photoURL}
-                      alt={name || "Artist"}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="grid h-full w-full place-items-center text-3xl text-white/40">
-                      🎤
-                    </div>
-                  )}
-                </div>
-
-                <div className="pb-2">
-                  <div className="text-3xl font-bold text-white">
-                    {profileLoading ? "Loading..." : name || "Gospel Artist"}
-                  </div>
-
-                  <div className="mt-1 text-sm text-white/60">
-                    {songs.length} Songs • {totalStreams} Streams
-                  </div>
-
-                  {bio && (
-                    <p className="mt-2 max-w-2xl text-sm text-white/65">
-                      {bio}
-                    </p>
-                  )}
-                </div>
+        <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,rgba(168,85,247,0.14),rgba(0,0,0,0.2),rgba(59,130,246,0.10))] p-6 md:p-8">
+          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-2xl">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-purple-400/20 bg-purple-500/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-purple-200">
+                Featured Artists
               </div>
 
-              <Link
-                href="/profile/edit"
-                className="inline-flex items-center justify-center rounded-2xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-500"
-              >
-                Edit Profile
-              </Link>
+              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+                Discover artists on ALOSMUSIC
+              </h1>
+
+              <p className="mt-3 max-w-xl text-sm leading-6 text-white/65 md:text-base">
+                Explore real artist profiles from your platform with a cleaner,
+                richer premium look.
+              </p>
+            </div>
+
+            <div className="w-full md:max-w-sm">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search artists or genre..."
+                className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none transition placeholder:text-white/35 focus:border-purple-400/40 focus:bg-black/55"
+              />
             </div>
           </div>
         </div>
 
-        {/* SONG LIST */}
-        <div>
-          <h2 className="mb-4 text-xl font-semibold text-white">Your Songs</h2>
-
+        <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-4 md:p-6">
           {loading ? (
-            <div className="text-white/60">Loading songs...</div>
-          ) : !user ? (
-            <div className="text-white/60">Please sign in to view your profile.</div>
-          ) : songs.length === 0 ? (
-            <div className="text-white/60">You have not uploaded any songs yet.</div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {songs.map((song) => (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
                 <div
-                  key={song.id}
-                  className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
+                  key={i}
+                  className="overflow-hidden rounded-[26px] border border-white/10 bg-black/30"
                 >
-                  <img
-                    src={song.coverURL || "/default-cover.jpg"}
-                    alt={song.title || "Song cover"}
-                    className="h-36 w-full object-cover"
-                  />
-
-                  <div className="p-3">
-                    <div className="truncate text-sm font-semibold text-white">
-                      {song.title || "Untitled Song"}
-                    </div>
-
-                    <div className="text-xs text-white/50">
-                      {song.streams || 0} streams
-                    </div>
+                  <div className="aspect-square animate-pulse bg-white/5" />
+                  <div className="space-y-2 p-4">
+                    <div className="h-4 w-2/3 animate-pulse rounded bg-white/10" />
+                    <div className="h-3 w-1/3 animate-pulse rounded bg-white/10" />
+                    <div className="h-3 w-1/2 animate-pulse rounded bg-white/10" />
                   </div>
                 </div>
               ))}
+            </div>
+          ) : error ? (
+            <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 p-8 text-center">
+              <div className="text-lg font-semibold text-white">
+                Could not load artists
+              </div>
+              <p className="mt-2 text-sm text-white/65">{error}</p>
+              <button
+                onClick={loadArtists}
+                className="mt-4 rounded-xl bg-purple-600 px-5 py-2.5 font-semibold hover:bg-purple-500"
+              >
+                Retry
+              </button>
+            </div>
+          ) : filteredArtists.length === 0 ? (
+            <div className="rounded-[24px] border border-white/10 bg-black/30 p-10 text-center">
+              <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-2xl bg-white/5 text-2xl">
+                🎤
+              </div>
+              <h2 className="text-lg font-semibold">No artists found</h2>
+              <p className="mt-2 text-sm text-white/60">
+                Try another search or create a new artist profile.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+              {filteredArtists.map((artist) => {
+                const displayName =
+                  artist.stageName ||
+                  artist.name ||
+                  artist.fullName ||
+                  "Unnamed Artist";
+
+                return (
+                  <Link
+                    key={artist.uid}
+                    href={`/artist/${artist.uid}`}
+                    className="group overflow-hidden rounded-[26px] border border-white/10 bg-black/35 transition duration-300 hover:-translate-y-1 hover:border-purple-400/30 hover:bg-white/[0.05]"
+                  >
+                    <div className="relative aspect-square overflow-hidden bg-white/[0.04]">
+                      {artist.photoURL ? (
+                        <img
+                          src={artist.photoURL}
+                          alt={displayName}
+                          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="grid h-full w-full place-items-center text-5xl text-white/20">
+                          ♪
+                        </div>
+                      )}
+
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+                      <div className="absolute left-3 top-3 rounded-full border border-white/10 bg-black/45 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-white/70 backdrop-blur">
+                        Artist
+                      </div>
+
+                      <div className="absolute inset-x-0 bottom-0 p-4">
+                        <div className="line-clamp-1 text-lg font-semibold text-white">
+                          {displayName}
+                        </div>
+
+                        <div className="mt-1 line-clamp-1 text-xs text-white/65">
+                          {artist.genre || "Gospel Artist"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4">
+                      <p className="line-clamp-2 min-h-[2.6rem] text-xs leading-5 text-white/55">
+                        {artist.bio?.trim()
+                          ? artist.bio
+                          : "Explore this artist profile, songs, and latest activity on ALOSMUSIC."}
+                      </p>
+
+                      <div className="mt-4 flex items-center justify-between">
+                        <span className="text-xs text-purple-300 transition group-hover:text-purple-200">
+                          View profile
+                        </span>
+
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-white/55">
+                          Open
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           )}
         </div>
