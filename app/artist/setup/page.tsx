@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import SiteShell from "@/components/Site/SiteShell";
@@ -35,17 +40,34 @@ export default function ArtistSetupPage() {
       }
 
       try {
-        const ref = doc(db, "artists", u.uid);
-        const snap = await getDoc(ref);
+        const artistRef = doc(db, "artists", u.uid);
+        const userRef = doc(db, "users", u.uid);
 
-        if (snap.exists()) {
-          const data = snap.data();
+        const [artistSnap, userSnap] = await Promise.all([
+          getDoc(artistRef),
+          getDoc(userRef),
+        ]);
+
+        if (artistSnap.exists()) {
+          const data = artistSnap.data();
           setStageName(data.stageName || "");
           setFullName(data.fullName || "");
           setBio(data.bio || "");
           setLocation(data.location || "");
           setGenre(data.genre || "Gospel");
           setPhotoURL(data.photoURL || "");
+          setCoverURL(data.coverURL || "");
+          setFacebook(data.facebook || "");
+          setInstagram(data.instagram || "");
+          setYoutube(data.youtube || "");
+        } else if (userSnap.exists()) {
+          const data = userSnap.data();
+          setStageName(data.stageName || "");
+          setFullName(data.fullName || data.name || u.displayName || "");
+          setBio(data.bio || "");
+          setLocation(data.location || "");
+          setGenre(data.genre || "Gospel");
+          setPhotoURL(data.photoURL || u.photoURL || "");
           setCoverURL(data.coverURL || "");
           setFacebook(data.facebook || "");
           setInstagram(data.instagram || "");
@@ -71,31 +93,53 @@ export default function ArtistSetupPage() {
     try {
       setSaving(true);
 
-      await setDoc(
-        doc(db, "artists", user.uid),
-        {
-          uid: user.uid,
-          email: user.email || "",
-          stageName,
-          fullName,
-          bio,
-          location,
-          genre,
-          photoURL,
-          coverURL,
-          facebook,
-          instagram,
-          youtube,
-          updatedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      const artistRef = doc(db, "artists", user.uid);
+      const userRef = doc(db, "users", user.uid);
+
+      const artistPayload = {
+        uid: user.uid,
+        email: user.email || "",
+        stageName: stageName.trim(),
+        fullName: fullName.trim(),
+        bio: bio.trim(),
+        location: location.trim(),
+        genre: genre.trim() || "Gospel",
+        photoURL: photoURL.trim(),
+        coverURL: coverURL.trim(),
+        facebook: facebook.trim(),
+        instagram: instagram.trim(),
+        youtube: youtube.trim(),
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      };
+
+      const userPayload = {
+        uid: user.uid,
+        email: user.email || "",
+        name: stageName.trim() || fullName.trim() || user.displayName || "",
+        stageName: stageName.trim(),
+        fullName: fullName.trim(),
+        bio: bio.trim(),
+        location: location.trim(),
+        genre: genre.trim() || "Gospel",
+        photoURL: photoURL.trim(),
+        coverURL: coverURL.trim(),
+        facebook: facebook.trim(),
+        instagram: instagram.trim(),
+        youtube: youtube.trim(),
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      };
+
+      await Promise.all([
+        setDoc(artistRef, artistPayload, { merge: true }),
+        setDoc(userRef, userPayload, { merge: true }),
+      ]);
 
       router.push(`/artist/${user.uid}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to save artist profile:", error);
-      alert("Failed to save artist profile");
+      alert(error?.message || "Failed to save artist profile");
     } finally {
       setSaving(false);
     }
@@ -123,7 +167,7 @@ export default function ArtistSetupPage() {
     <SiteShell title="Artist Setup">
       <form
         onSubmit={handleSave}
-        className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-white/5 p-6 space-y-4"
+        className="mx-auto max-w-3xl space-y-4 rounded-3xl border border-white/10 bg-white/5 p-6"
       >
         <div>
           <h1 className="text-2xl font-bold">Create Artist Profile</h1>

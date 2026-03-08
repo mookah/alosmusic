@@ -15,9 +15,18 @@ export async function incrementSongPlays(songId: string) {
       }),
     });
 
+    const text = await res.text();
+
     if (!res.ok) {
-      const text = await res.text();
-      console.error("Failed to increment plays:", text);
+      console.error("Failed to increment plays:", res.status, text);
+      return;
+    }
+
+    try {
+      const data = JSON.parse(text);
+      console.log("Increment plays response:", data);
+    } catch {
+      console.error("API did not return JSON:", text);
     }
   } catch (error) {
     console.error("Failed to increment plays:", error);

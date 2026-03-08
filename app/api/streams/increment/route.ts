@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const cooldownMs = 60 * 60 * 1000; // 1 hour
+    const cooldownMs = 60 * 60 * 1000;
     const key = `${songId}_${deviceId}`;
 
     const logRef = adminDb.collection("playLogs").doc(key);
@@ -64,7 +64,11 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Stream increment API error:", error);
     return NextResponse.json(
-      { ok: false, error: "Internal server error" },
+      {
+        ok: false,
+        error:
+          error instanceof Error ? error.message : "Internal server error",
+      },
       { status: 500 }
     );
   }
