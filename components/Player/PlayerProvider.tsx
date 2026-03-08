@@ -1,12 +1,12 @@
 "use client";
 
-import { ReactNode } from "react";
+import React from "react";
 import BottomPlayer from "./BottomPlayer";
 
 export default function PlayerProvider({
   children,
 }: {
-  children: ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <>
