@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import SiteShell from "@/components/Site/SiteShell";
+import LiveConcert from "@/components/LiveConcert";
 import { db } from "@/lib/firebase";
-import { setNowPlaying, setQueue, Track } from "@/lib/playerStore";
 
 type SongDoc = {
   id: string;
@@ -15,6 +15,15 @@ type SongDoc = {
   coverURL?: string;
   audioURL?: string;
   streams?: number;
+};
+
+type Track = {
+  id: string;
+  title: string;
+  artist: string;
+  genre?: string;
+  coverUrl?: string;
+  audioUrl?: string;
 };
 
 type HeroSlide = {
@@ -28,6 +37,8 @@ export default function HomePage() {
   const [songs, setSongs] = useState<SongDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSlide, setActiveSlide] = useState(0);
+  const [showLive, setShowLive] = useState(false);
+  const liveRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     async function loadSongs() {
@@ -54,6 +65,20 @@ export default function HomePage() {
     }
 
     loadSongs();
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (!liveRef.current) return;
+      if (!liveRef.current.contains(event.target as Node)) {
+        setShowLive(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   const playableTracks = useMemo<Track[]>(() => {
@@ -134,7 +159,7 @@ export default function HomePage() {
     }, 4500);
 
     return () => clearInterval(timer);
-  }, [heroSlides]);
+  }, [heroSlides.length]);
 
   useEffect(() => {
     if (activeSlide >= heroSlides.length) {
@@ -146,8 +171,34 @@ export default function HomePage() {
     const index = playableTracks.findIndex((track) => track.id === songId);
     if (index === -1) return;
 
-    setQueue(playableTracks, index);
-    setNowPlaying(playableTracks[index]);
+    const track = playableTracks[index];
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("alosmusic_active_song", track.id);
+      window.dispatchEvent(new Event("alos:active-song-changed"));
+
+      window.dispatchEvent(
+        new CustomEvent("alos:play", {
+          detail: {
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            genre: track.genre,
+            coverURL: track.coverUrl || "",
+            audioURL: track.audioUrl || "",
+            queue: playableTracks.map((item) => ({
+              id: item.id,
+              title: item.title,
+              artist: item.artist,
+              genre: item.genre,
+              coverURL: item.coverUrl || "",
+              audioURL: item.audioUrl || "",
+            })),
+            startIndex: index,
+          },
+        })
+      );
+    }
   }
 
   const totalArtists = new Set(
@@ -168,14 +219,14 @@ export default function HomePage() {
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-2xl">
                 <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-1 text-[11px] text-fuchsia-300 md:text-xs">
-                  <span className="h-2 w-2 rounded-full bg-fuchsia-400 shadow-[0_0_12px_rgba(217,70,239,0.95)] animate-pulse" />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-fuchsia-400 shadow-[0_0_12px_rgba(217,70,239,0.95)]" />
                   Zambia Gospel Music Streaming
                 </div>
 
                 <div className="mt-5 flex items-center gap-4">
                   <div className="relative h-20 w-20 sm:h-24 sm:w-24">
-                    <div className="absolute inset-0 rounded-full bg-fuchsia-500/20 blur-2xl animate-pulse" />
-                    <div className="absolute inset-2 rounded-full bg-purple-500/20 blur-xl animate-pulse" />
+                    <div className="absolute inset-0 animate-pulse rounded-full bg-fuchsia-500/20 blur-2xl" />
+                    <div className="absolute inset-2 animate-pulse rounded-full bg-purple-500/20 blur-xl" />
                     <div className="absolute inset-0 rounded-full border border-fuchsia-400/30 ring-spin" />
 
                     <div className="relative z-10 flex h-full w-full items-center justify-center rounded-full border border-white/10 bg-black/50 backdrop-blur-xl shadow-[0_0_40px_rgba(168,85,247,.28)]">
@@ -203,7 +254,8 @@ export default function HomePage() {
                 </div>
 
                 <h1 className="mt-6 max-w-3xl text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl md:text-5xl xl:text-6xl">
-                  {currentSlide?.title || "Discover, upload and stream powerful gospel music"}
+                  {currentSlide?.title ||
+                    "Discover, upload and stream powerful gospel music"}
                 </h1>
 
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-white/70 md:text-base">
@@ -227,11 +279,53 @@ export default function HomePage() {
                   </Link>
                 </div>
 
+                <div ref={liveRef} className="relative mt-6 max-w-md">
+                  <button
+                    type="button"
+                    onClick={() => setShowLive((prev) => !prev)}
+                    className="w-full rounded-3xl border border-white/10 bg-white/[0.04] p-4 text-left shadow-[0_10px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl transition hover:bg-white/[0.06]"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-white/40">
+                          Platform
+                        </div>
+
+                        <div className="mt-2 flex items-center gap-2 text-2xl font-bold text-white">
+                          LIVE
+                          <span className="h-2.5 w-2.5 rounded-full bg-fuchsia-400 shadow-[0_0_12px_rgba(217,70,239,0.95)]" />
+                        </div>
+
+                        <p className="mt-2 text-sm leading-6 text-white/60">
+                          Stream music, live sessions and artist moments in one place.
+                        </p>
+                      </div>
+
+                      <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-medium text-white/75">
+                        Open
+                      </div>
+                    </div>
+                  </button>
+
+                  <div
+                    className={`absolute left-0 top-full z-30 mt-3 w-[220px] origin-top-left transition-all duration-200 ${
+                      showLive
+                        ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+                        : "pointer-events-none -translate-y-1 scale-95 opacity-0"
+                    }`}
+                  >
+                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/85 shadow-[0_20px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                      <LiveConcert />
+                    </div>
+                  </div>
+                </div>
+
                 {heroSlides.length > 1 && (
                   <div className="mt-6 flex items-center gap-2">
                     {heroSlides.map((slide, index) => (
                       <button
                         key={slide.key}
+                        type="button"
                         onClick={() => setActiveSlide(index)}
                         className={`h-2.5 rounded-full transition-all ${
                           activeSlide === index
@@ -264,6 +358,7 @@ export default function HomePage() {
 
                           {song.audioURL && (
                             <button
+                              type="button"
                               onClick={() => handlePlay(song.id)}
                               className="absolute bottom-3 right-3 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-fuchsia-600"
                             >
@@ -298,7 +393,8 @@ export default function HomePage() {
                   </div>
                 ) : (
                   <div className="rounded-3xl border border-white/10 bg-black/30 p-8 text-white/60">
-                    No playable songs yet. Upload songs with audio to power the hero slider.
+                    No playable songs yet. Upload songs with audio to power the
+                    hero slider.
                   </div>
                 )}
               </div>
@@ -311,16 +407,24 @@ export default function HomePage() {
             <div className="text-xs uppercase tracking-[0.2em] text-white/40">
               Songs
             </div>
-            <div className="mt-3 text-3xl font-bold text-white">{songs.length}</div>
-            <div className="mt-1 text-sm text-white/55">Latest uploaded tracks</div>
+            <div className="mt-3 text-3xl font-bold text-white">
+              {songs.length}
+            </div>
+            <div className="mt-1 text-sm text-white/55">
+              Latest uploaded tracks
+            </div>
           </div>
 
           <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
             <div className="text-xs uppercase tracking-[0.2em] text-white/40">
               Artists
             </div>
-            <div className="mt-3 text-3xl font-bold text-white">{totalArtists}</div>
-            <div className="mt-1 text-sm text-white/55">Artists represented here</div>
+            <div className="mt-3 text-3xl font-bold text-white">
+              {totalArtists}
+            </div>
+            <div className="mt-1 text-sm text-white/55">
+              Artists represented here
+            </div>
           </div>
 
           <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:col-span-2 xl:col-span-1">
@@ -329,9 +433,11 @@ export default function HomePage() {
             </div>
             <div className="mt-3 flex items-center gap-2 text-3xl font-bold text-white">
               LIVE
-              <span className="h-3 w-3 rounded-full bg-fuchsia-400 shadow-[0_0_14px_rgba(217,70,239,0.95)] animate-pulse" />
+              <span className="h-3 w-3 animate-pulse rounded-full bg-fuchsia-400 shadow-[0_0_14px_rgba(217,70,239,0.95)]" />
             </div>
-            <div className="mt-1 text-sm text-white/55">Upload, stream and grow</div>
+            <div className="mt-1 text-sm text-white/55">
+              Upload, stream and grow
+            </div>
           </div>
         </section>
 
@@ -371,6 +477,7 @@ export default function HomePage() {
 
                     {song.audioURL ? (
                       <button
+                        type="button"
                         onClick={() => handlePlay(song.id)}
                         className="absolute bottom-3 right-3 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-fuchsia-600"
                       >

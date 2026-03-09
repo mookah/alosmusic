@@ -1,3 +1,6 @@
+// lib/playerStore.ts
+"use client";
+
 export type Track = {
   id: string;
   title: string;
@@ -5,15 +8,13 @@ export type Track = {
   genre?: string;
   coverUrl?: string;
   audioUrl?: string;
-
-  // backward compatibility with older Firestore fields
   coverURL?: string;
   audioURL?: string;
 };
 
 export type RepeatMode = "off" | "one" | "all";
 
-export type PlayerSnapshot = {
+type PlayerSnapshot = {
   track: Track | null;
   isPlaying: boolean;
   currentTime: number;
@@ -25,6 +26,8 @@ export type PlayerSnapshot = {
   repeatMode: RepeatMode;
   shuffle: boolean;
 };
+
+const STORAGE_KEY = "alosmusic_player";
 
 const DEFAULT_STATE: PlayerSnapshot = {
   track: null,
@@ -41,28 +44,7 @@ const DEFAULT_STATE: PlayerSnapshot = {
 
 let state: PlayerSnapshot = { ...DEFAULT_STATE };
 
-const STORAGE_KEY = "alosmusic_player";
 const listeners = new Set<(state: PlayerSnapshot) => void>();
-
-function normalizeTrack(track: Track | null | undefined): Track | null {
-  if (!track || !track.id) return null;
-
-  return {
-    id: String(track.id),
-    title: track.title || "Untitled",
-    artist: track.artist || "Unknown Artist",
-    genre: track.genre || "",
-    coverUrl: track.coverUrl || track.coverURL || "",
-    audioUrl: track.audioUrl || track.audioURL || "",
-    coverURL: track.coverURL || track.coverUrl || "",
-    audioURL: track.audioURL || track.audioUrl || "",
-  };
-}
-
-function normalizeQueue(queue: Track[] | null | undefined): Track[] {
-  if (!Array.isArray(queue)) return [];
-  return queue.map((track) => normalizeTrack(track)).filter(Boolean) as Track[];
-}
 
 function cloneState(): PlayerSnapshot {
   return {
@@ -88,88 +70,52 @@ function emit() {
   listeners.forEach((listener) => listener(snapshot));
 }
 
-function clampIndex(index: number, length: number) {
-  if (!length) return -1;
-  if (index < 0) return 0;
-  if (index >= length) return length - 1;
-  return index;
+export function subscribePlayer(listener: (state: PlayerSnapshot) => void) {
+  listeners.add(listener);
+  listener(cloneState());
+
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
-function findTrackIndex(track: Track | null, queue: Track[]) {
-  if (!track) return -1;
-  return queue.findIndex((item) => item.id === track.id);
-}
-
-function getNextShuffledIndex(length: number, currentIndex: number) {
-  if (length <= 1) return currentIndex;
-
-  let nextIndex = currentIndex;
-  while (nextIndex === currentIndex) {
-    nextIndex = Math.floor(Math.random() * length);
-  }
-  return nextIndex;
+export function getPlayerState(): PlayerSnapshot {
+  return cloneState();
 }
 
 export function restorePlayerFromStorage(): PlayerSnapshot {
-  if (typeof window === "undefined") {
-    return cloneState();
-  }
+  if (typeof window === "undefined") return cloneState();
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-
-    if (!raw) {
-      state = { ...DEFAULT_STATE };
-      return cloneState();
-    }
+    if (!raw) return cloneState();
 
     const parsed = JSON.parse(raw) as Partial<PlayerSnapshot>;
 
-    const restoredTrack = normalizeTrack(parsed.track ?? null);
-    const restoredQueue = normalizeQueue(parsed.queue);
-    let restoredIndex =
-      typeof parsed.currentIndex === "number" ? parsed.currentIndex : -1;
-
-    if (restoredTrack && restoredQueue.length > 0) {
-      const matched = findTrackIndex(restoredTrack, restoredQueue);
-      if (matched >= 0) restoredIndex = matched;
-    }
-
-    if (restoredTrack && restoredQueue.length === 0) {
-      restoredIndex = 0;
-    }
-
-    const finalQueue =
-      restoredQueue.length > 0
-        ? restoredQueue
-        : restoredTrack
-        ? [restoredTrack]
-        : [];
-
     state = {
-      track: restoredTrack,
-      isPlaying: !!parsed.isPlaying,
-      currentTime:
-        typeof parsed.currentTime === "number" ? parsed.currentTime : 0,
-      duration: typeof parsed.duration === "number" ? parsed.duration : 0,
-      volume: typeof parsed.volume === "number" ? parsed.volume : 0.85,
-      muted: !!parsed.muted,
-      queue: finalQueue,
-      currentIndex: clampIndex(restoredIndex, finalQueue.length),
+      ...DEFAULT_STATE,
+      ...parsed,
+      track: parsed.track ?? null,
+      queue: Array.isArray(parsed.queue) ? parsed.queue : [],
+      currentIndex:
+        typeof parsed.currentIndex === "number" ? parsed.currentIndex : -1,
       repeatMode:
         parsed.repeatMode === "one" ||
         parsed.repeatMode === "all" ||
         parsed.repeatMode === "off"
           ? parsed.repeatMode
           : "off",
-      shuffle: !!parsed.shuffle,
+      volume:
+        typeof parsed.volume === "number"
+          ? Math.max(0, Math.min(1, parsed.volume))
+          : DEFAULT_STATE.volume,
+      muted: Boolean(parsed.muted),
+      isPlaying: Boolean(parsed.isPlaying),
+      currentTime:
+        typeof parsed.currentTime === "number" ? parsed.currentTime : 0,
+      duration: typeof parsed.duration === "number" ? parsed.duration : 0,
+      shuffle: Boolean(parsed.shuffle),
     };
-
-    if (state.currentIndex >= 0 && state.queue[state.currentIndex]) {
-      state.track = state.queue[state.currentIndex];
-    } else if (!state.track) {
-      state.currentIndex = -1;
-    }
 
     return cloneState();
   } catch (error) {
@@ -179,34 +125,33 @@ export function restorePlayerFromStorage(): PlayerSnapshot {
   }
 }
 
-export function subscribePlayer(listener: (state: PlayerSnapshot) => void) {
-  listeners.add(listener);
-  listener(cloneState());
-  return () => listeners.delete(listener);
-}
+export function setQueue(queue: Track[], startIndex = 0) {
+  const safeQueue = Array.isArray(queue) ? queue.filter(Boolean) : [];
 
-export function setQueue(tracks: Track[], startIndex = 0) {
-  const normalizedTracks = normalizeQueue(tracks);
-
-  if (!normalizedTracks.length) {
-    state.queue = [];
-    state.currentIndex = -1;
-    state.track = null;
-    state.isPlaying = false;
-    state.currentTime = 0;
-    state.duration = 0;
+  if (safeQueue.length === 0) {
+    state = {
+      ...state,
+      queue: [],
+      currentIndex: -1,
+      track: null,
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+    };
     emit();
     return;
   }
 
-  const safeIndex = clampIndex(startIndex, normalizedTracks.length);
+  const safeIndex = Math.max(0, Math.min(startIndex, safeQueue.length - 1));
 
-  state.queue = normalizedTracks;
-  state.currentIndex = safeIndex;
-  state.track = normalizedTracks[safeIndex];
-  state.isPlaying = true;
-  state.currentTime = 0;
-  state.duration = 0;
+  state = {
+    ...state,
+    queue: safeQueue,
+    currentIndex: safeIndex,
+    track: safeQueue[safeIndex],
+    currentTime: 0,
+    duration: 0,
+  };
 
   emit();
 }
@@ -216,204 +161,223 @@ export function setNowPlaying(
   queue?: Track[],
   startIndex?: number
 ) {
-  const normalizedTrack = normalizeTrack(track);
-
-  if (!normalizedTrack) {
-    state.track = null;
-    state.isPlaying = false;
-    state.currentTime = 0;
-    state.duration = 0;
-    state.queue = [];
-    state.currentIndex = -1;
+  if (!track) {
+    state = {
+      ...state,
+      track: null,
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+      currentIndex: -1,
+    };
     emit();
     return;
   }
 
-  const normalizedQueue = normalizeQueue(queue);
+  const sameTrack = state.track?.id === track.id;
 
-  if (normalizedQueue.length > 0) {
-    const matchedIndex =
-      typeof startIndex === "number" &&
-      normalizedQueue[startIndex]?.id === normalizedTrack.id
-        ? startIndex
-        : findTrackIndex(normalizedTrack, normalizedQueue);
+  let nextQueue = state.queue;
+  let nextIndex = state.currentIndex;
 
-    state.queue = normalizedQueue;
-    state.currentIndex = matchedIndex >= 0 ? matchedIndex : 0;
-    state.track = state.queue[state.currentIndex] ?? normalizedTrack;
-  } else {
-    const existingIndex = findTrackIndex(normalizedTrack, state.queue);
+  if (Array.isArray(queue) && queue.length > 0) {
+    nextQueue = queue.filter(Boolean);
 
-    if (existingIndex >= 0) {
-      state.currentIndex = existingIndex;
-      state.track = state.queue[existingIndex];
+    if (typeof startIndex === "number") {
+      nextIndex = Math.max(0, Math.min(startIndex, nextQueue.length - 1));
     } else {
-      state.queue = [normalizedTrack];
-      state.currentIndex = 0;
-      state.track = normalizedTrack;
+      const foundIndex = nextQueue.findIndex((item) => item.id === track.id);
+      nextIndex = foundIndex >= 0 ? foundIndex : 0;
+    }
+  } else if (state.queue.length === 0) {
+    nextQueue = [track];
+    nextIndex = 0;
+  } else {
+    const existingIndex = state.queue.findIndex((item) => item.id === track.id);
+    if (existingIndex >= 0) {
+      nextIndex = existingIndex;
+    } else {
+      nextQueue = [...state.queue, track];
+      nextIndex = nextQueue.length - 1;
     }
   }
 
-  state.isPlaying = true;
-  state.currentTime = 0;
-  state.duration = 0;
+  state = {
+    ...state,
+    queue: nextQueue,
+    currentIndex: nextIndex,
+    track,
+    isPlaying: true,
+    currentTime: sameTrack ? state.currentTime : 0,
+    duration: sameTrack ? state.duration : 0,
+  };
 
+  emit();
+}
+
+export function playPlayer() {
+  if (!state.track && state.queue.length > 0 && state.currentIndex >= 0) {
+    state = {
+      ...state,
+      track: state.queue[state.currentIndex],
+      isPlaying: true,
+    };
+  } else if (state.track) {
+    state = {
+      ...state,
+      isPlaying: true,
+    };
+  }
+
+  emit();
+}
+
+export function pausePlayer() {
+  state = {
+    ...state,
+    isPlaying: false,
+  };
+  emit();
+}
+
+export function stopPlayer() {
+  state = {
+    ...state,
+    isPlaying: false,
+    currentTime: 0,
+  };
+  emit();
+}
+
+export function seekPlayer(time: number) {
+  state = {
+    ...state,
+    currentTime: Math.max(0, time),
+  };
   emit();
 }
 
 export function updatePlayback(
-  patch:
-    | boolean
-    | Partial<
-        Pick<
-          PlayerSnapshot,
-          | "track"
-          | "isPlaying"
-          | "currentTime"
-          | "duration"
-          | "volume"
-          | "muted"
-          | "repeatMode"
-          | "shuffle"
-        >
-      >
+  values: Partial<Pick<PlayerSnapshot, "currentTime" | "duration" | "isPlaying">>
 ) {
-  if (typeof patch === "boolean") {
-    state.isPlaying = patch;
-  } else {
-    const nextTrack =
-      patch.track !== undefined ? normalizeTrack(patch.track) : state.track;
+  state = {
+    ...state,
+    ...values,
+  };
+  emit();
+}
 
+export function setVolume(volume: number) {
+  const safeVolume = Math.max(0, Math.min(1, volume));
+
+  state = {
+    ...state,
+    volume: safeVolume,
+    muted: safeVolume <= 0 ? true : state.muted,
+  };
+  emit();
+}
+
+export function setMuted(muted: boolean) {
+  state = {
+    ...state,
+    muted,
+  };
+  emit();
+}
+
+export function setRepeatMode(repeatMode: RepeatMode) {
+  state = {
+    ...state,
+    repeatMode,
+  };
+  emit();
+}
+
+export function setShuffle(shuffle: boolean) {
+  state = {
+    ...state,
+    shuffle,
+  };
+  emit();
+}
+
+export function playNextTrack() {
+  if (state.queue.length === 0) return;
+
+  if (state.repeatMode === "one" && state.track) {
     state = {
       ...state,
-      ...patch,
-      track: nextTrack,
+      currentTime: 0,
+      isPlaying: true,
     };
+    emit();
+    return;
+  }
 
-    if (patch.track !== undefined) {
-      if (nextTrack === null) {
-        state.currentIndex = -1;
-      } else {
-        const matchedIndex = findTrackIndex(nextTrack, state.queue);
-        if (matchedIndex >= 0) {
-          state.currentIndex = matchedIndex;
-        }
-      }
+  let nextIndex = state.currentIndex;
+
+  if (state.shuffle && state.queue.length > 1) {
+    do {
+      nextIndex = Math.floor(Math.random() * state.queue.length);
+    } while (nextIndex === state.currentIndex);
+  } else {
+    nextIndex += 1;
+  }
+
+  if (nextIndex >= state.queue.length) {
+    if (state.repeatMode === "all") {
+      nextIndex = 0;
+    } else {
+      state = {
+        ...state,
+        isPlaying: false,
+        currentTime: 0,
+      };
+      emit();
+      return;
     }
   }
 
+  state = {
+    ...state,
+    currentIndex: nextIndex,
+    track: state.queue[nextIndex],
+    isPlaying: true,
+    currentTime: 0,
+    duration: 0,
+  };
   emit();
 }
 
-export function playNext() {
-  if (!state.queue.length) return;
+export function playPreviousTrack() {
+  if (state.queue.length === 0) return;
 
-  if (state.repeatMode === "one") {
-    state.currentTime = 0;
-    state.duration = 0;
-    state.isPlaying = true;
-    emit();
-    return;
-  }
+  let prevIndex = state.currentIndex;
 
-  let nextIndex = -1;
-
-  if (state.shuffle) {
-    nextIndex = getNextShuffledIndex(state.queue.length, state.currentIndex);
+  if (state.shuffle && state.queue.length > 1) {
+    do {
+      prevIndex = Math.floor(Math.random() * state.queue.length);
+    } while (prevIndex === state.currentIndex);
   } else {
-    nextIndex = state.currentIndex + 1;
+    prevIndex -= 1;
   }
 
-  if (nextIndex >= 0 && nextIndex < state.queue.length) {
-    state.currentIndex = nextIndex;
-    state.track = state.queue[nextIndex];
-    state.isPlaying = true;
-    state.currentTime = 0;
-    state.duration = 0;
-    emit();
-    return;
+  if (prevIndex < 0) {
+    prevIndex = state.repeatMode === "all" ? state.queue.length - 1 : 0;
   }
 
-  if (state.repeatMode === "all" && state.queue.length > 0) {
-    state.currentIndex = 0;
-    state.track = state.queue[0];
-    state.isPlaying = true;
-    state.currentTime = 0;
-    state.duration = 0;
-    emit();
-    return;
-  }
-
-  state.isPlaying = false;
-  state.currentTime = 0;
+  state = {
+    ...state,
+    currentIndex: prevIndex,
+    track: state.queue[prevIndex],
+    isPlaying: true,
+    currentTime: 0,
+    duration: 0,
+  };
   emit();
 }
 
-export function playPrev() {
-  if (!state.queue.length) return;
-
-  if (state.currentTime > 3) {
-    state.currentTime = 0;
-    emit();
-    return;
-  }
-
-  let prevIndex = -1;
-
-  if (state.shuffle) {
-    prevIndex = getNextShuffledIndex(state.queue.length, state.currentIndex);
-  } else {
-    prevIndex = state.currentIndex - 1;
-  }
-
-  if (prevIndex >= 0 && prevIndex < state.queue.length) {
-    state.currentIndex = prevIndex;
-    state.track = state.queue[prevIndex];
-    state.isPlaying = true;
-    state.currentTime = 0;
-    state.duration = 0;
-    emit();
-    return;
-  }
-
-  if (state.repeatMode === "all" && state.queue.length > 0) {
-    const lastIndex = state.queue.length - 1;
-    state.currentIndex = lastIndex;
-    state.track = state.queue[lastIndex];
-    state.isPlaying = true;
-    state.currentTime = 0;
-    state.duration = 0;
-    emit();
-  }
-}
-
-export function toggleShuffle() {
-  state.shuffle = !state.shuffle;
+export function clearPlayer() {
+  state = { ...DEFAULT_STATE };
   emit();
-}
-
-export function setShuffle(value: boolean) {
-  state.shuffle = value;
-  emit();
-}
-
-export function cycleRepeatMode() {
-  if (state.repeatMode === "off") {
-    state.repeatMode = "all";
-  } else if (state.repeatMode === "all") {
-    state.repeatMode = "one";
-  } else {
-    state.repeatMode = "off";
-  }
-
-  emit();
-}
-
-export function setRepeatMode(mode: RepeatMode) {
-  state.repeatMode = mode;
-  emit();
-}
-
-export function getPlayerState() {
-  return cloneState();
 }

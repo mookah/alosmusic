@@ -5,10 +5,10 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBDTiHTNQicJU4BQRrAAPdq6YdDrcE8NKY",
+  apiKey: "AIzaSyBDTiHTNQicJU4BQRrAAPdq6YDrcE8NKY",
   authDomain: "alosmusic-f5bc9.firebaseapp.com",
   projectId: "alosmusic-f5bc9",
-  storageBucket: "alosmusic-f5bc9.firebasestorage.app",
+  storageBucket: "alosmusic-f5bc9.appspot.com",
   messagingSenderId: "1040240070779",
   appId: "1:1040240070779:web:1c45e2dc04fcc1419e92de",
   measurementId: "G-DDM66G2RNN",

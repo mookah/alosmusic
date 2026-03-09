@@ -1,90 +1,74 @@
-"use client";
-
-import { Track } from "@/lib/playerStore";
-
-export default function SongCard({ track }: { track: Track }) {
-  const handlePlay = () => {
-    window.dispatchEvent(new CustomEvent("alos:play", { detail: track }));
-  };
-
-  const handleShare = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-
-    const url =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/song/${track.id}`
-        : "";
-
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: track.title,
-          text: `${track.title} by ${track.artist} on ALOSMUSIC`,
-          url,
-        });
-      } else {
-        await navigator.clipboard.writeText(url);
-        alert("Song link copied");
-      }
-    } catch (error) {
-      console.error("Share failed:", error);
-    }
-  };
+{songs.map((song) => {
+  const songCover = song.coverURL || song.coverUrl || "";
+  const isCurrentSong = activeSongId === song.id;
 
   return (
     <div
-      onClick={handlePlay}
-      className="group overflow-hidden rounded-2xl border border-white/10 bg-white/5 cursor-pointer transition hover:bg-white/10"
+      key={song.id}
+      className={`group overflow-hidden rounded-[24px] border bg-black/25 transition duration-300 ${
+        isCurrentSong
+          ? "border-fuchsia-500/70 shadow-[0_0_30px_rgba(217,70,239,0.25)] ring-1 ring-fuchsia-400/40 scale-[1.01]"
+          : "border-white/10 hover:bg-white/[0.04]"
+      }`}
     >
-      <div className="relative aspect-[4/5] bg-black/20 overflow-hidden">
-        {track.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+      <div className="relative aspect-[16/10] overflow-hidden bg-white/[0.04]">
+        {songCover ? (
           <img
-            src={track.coverUrl}
-            alt={track.title}
-            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+            src={songCover}
+            alt={song.title || "Song cover"}
+            className={`h-full w-full object-cover transition duration-500 ${
+              isCurrentSong ? "scale-105" : "group-hover:scale-105"
+            }`}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-white/30 text-3xl">
-            ♪
+          <div className="grid h-full w-full place-items-center text-4xl text-white/20">
+            ♫
           </div>
         )}
 
-        <div className="absolute inset-0 bg-black/20 opacity-0 transition group-hover:opacity-100" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
 
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handlePlay();
-          }}
-          className="absolute bottom-3 left-3 rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:bg-purple-500"
-        >
-          Play
-        </button>
+        {isCurrentSong && (
+          <>
+            <div className="absolute right-3 top-3 rounded-full bg-fuchsia-500 px-2 py-1 text-[10px] font-semibold text-white shadow-lg">
+              Playing
+            </div>
+
+            <div className="absolute left-3 top-3 flex h-8 items-end gap-1 rounded-full bg-black/45 px-2 backdrop-blur">
+              <span className="h-2 w-1 animate-[pulse_0.9s_ease-in-out_infinite] rounded-full bg-fuchsia-400" />
+              <span className="h-4 w-1 animate-[pulse_1.1s_ease-in-out_infinite] rounded-full bg-purple-400" />
+              <span className="h-3 w-1 animate-[pulse_0.8s_ease-in-out_infinite] rounded-full bg-pink-400" />
+            </div>
+          </>
+        )}
+
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 p-4">
+          <div className="line-clamp-1 text-lg font-semibold text-white">
+            {song.title || "Untitled Song"}
+          </div>
+          <div className="mt-1 text-xs text-white/65">
+            {song.genre || artist.genre || "Gospel"}
+          </div>
+        </div>
       </div>
 
-      <div className="p-3">
-        <div className="truncate text-base font-semibold text-white">
-          {track.title}
+      <div className="flex items-center justify-between p-4">
+        <div className="text-xs text-white/55">
+          {Number(song.plays || 0)} streams
         </div>
 
-        <div className="truncate text-sm text-white/60">
-          {track.artist}
-        </div>
-
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/60">
-            {track.genre || "Gospel"}
-          </span>
-
-          <button
-            onClick={handleShare}
-            className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10"
-          >
-            Share
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => handlePlay(song)}
+          className={`relative z-10 rounded-full px-3 py-1.5 text-xs transition ${
+            isCurrentSong
+              ? "border border-fuchsia-400/40 bg-fuchsia-500 text-white"
+              : "border border-white/10 bg-white/[0.05] text-white/80 hover:bg-white/[0.1]"
+          }`}
+        >
+          {isCurrentSong ? "Playing" : "Play"}
+        </button>
       </div>
     </div>
   );
-}
+})}

@@ -38,6 +38,7 @@ type Song = {
   audioURL?: string;
   audioUrl?: string;
   plays?: number;
+  streams?: number;
   uid?: string;
   artistId?: string;
 };
@@ -49,7 +50,8 @@ export default function ArtistPage() {
   const [artist, setArtist] = useState<Artist | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
-  const [shareText, setShareText] = useState("Share");
+  const [shareText, setShareText] = useState("↗");
+  const [activeSongId, setActiveSongId] = useState("");
 
   useEffect(() => {
     async function loadArtistPage() {
@@ -60,16 +62,21 @@ export default function ArtistPage() {
       }
 
       try {
-        const artistRef = doc(db, "users", id);
-        const artistSnap = await getDoc(artistRef);
+        let foundArtist: Artist | null = null;
 
-        if (!artistSnap.exists()) {
-          setArtist(null);
-          return;
+        const userRef = doc(db, "users", id);
+        const userSnap = await getDoc(userRef);
+
+        if (userSnap.exists()) {
+          foundArtist = userSnap.data() as Artist;
+        } else {
+          const artistRef = doc(db, "artists", id);
+          const artistSnap = await getDoc(artistRef);
+
+          if (artistSnap.exists()) {
+            foundArtist = artistSnap.data() as Artist;
+          }
         }
-
-        const artistData = artistSnap.data() as Artist;
-        setArtist(artistData);
 
         let songsSnap = await getDocs(
           query(collection(db, "songs"), where("uid", "==", id))
@@ -86,10 +93,26 @@ export default function ArtistPage() {
           ...d.data(),
         })) as Song[];
 
+        if (!foundArtist && songsList.length > 0) {
+          const firstSong = songsList[0];
+          foundArtist = {
+            stageName: firstSong.title ? undefined : "Artist",
+            name: firstSong.uid ? undefined : "Artist",
+            fullName: firstSong.uid ? undefined : "Artist",
+            genre: firstSong.genre || "Gospel",
+            bio: "This artist profile has not been fully set up yet.",
+            photoURL: "",
+            coverURL: "",
+            followersCount: 0,
+          };
+        }
+
+        setArtist(foundArtist);
         setSongs(songsList);
       } catch (error) {
         console.error("Failed to load artist page:", error);
         setArtist(null);
+        setSongs([]);
       } finally {
         setLoading(false);
       }
@@ -98,13 +121,31 @@ export default function ArtistPage() {
     loadArtistPage();
   }, [id]);
 
+  useEffect(() => {
+    function syncActiveSong() {
+      if (typeof window === "undefined") return;
+      const current = localStorage.getItem("alosmusic_active_song") || "";
+      setActiveSongId(current);
+    }
+
+    syncActiveSong();
+    window.addEventListener("alos:active-song-changed", syncActiveSong);
+
+    return () => {
+      window.removeEventListener("alos:active-song-changed", syncActiveSong);
+    };
+  }, []);
+
   const displayName = useMemo(() => {
     if (!artist) return "Artist";
     return artist.stageName || artist.name || artist.fullName || "Unnamed Artist";
   }, [artist]);
 
   const totalPlays = useMemo(() => {
-    return songs.reduce((sum, song) => sum + Number(song.plays || 0), 0);
+    return songs.reduce(
+      (sum, song) => sum + Number(song.plays || song.streams || 0),
+      0
+    );
   }, [songs]);
 
   const followersCount = Number(artist?.followersCount || 0);
@@ -130,14 +171,14 @@ export default function ArtistPage() {
         await navigator.clipboard.writeText(url);
       }
 
-      setShareText("Shared!");
-      setTimeout(() => setShareText("Share"), 1800);
+      setShareText("✓");
+      setTimeout(() => setShareText("↗"), 1800);
     } catch (error) {
       console.error("Share failed:", error);
       try {
         await navigator.clipboard.writeText(url);
-        setShareText("Link copied!");
-        setTimeout(() => setShareText("Share"), 1800);
+        setShareText("✓");
+        setTimeout(() => setShareText("↗"), 1800);
       } catch {}
     }
   }
@@ -163,6 +204,13 @@ export default function ArtistPage() {
       }));
 
     const startIndex = queue.findIndex((item) => item.id === song.id);
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("alosmusic_active_song", song.id);
+      window.dispatchEvent(new Event("alos:active-song-changed"));
+    }
+
+    setActiveSongId(song.id);
 
     window.dispatchEvent(
       new CustomEvent("alos:play", {
@@ -190,11 +238,33 @@ export default function ArtistPage() {
     );
   }
 
-  if (!artist) {
+  if (!artist && songs.length === 0) {
     return (
-      <SiteShell title="Artist Not Found">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/70">
-          Artist not found.
+      <SiteShell title="Artist">
+        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-8">
+          <h2 className="text-2xl font-semibold text-white">
+            Artist profile not found
+          </h2>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-white/60">
+            This artist does not have a full profile yet, or the profile record
+            has not been created in Firestore.
+          </p>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href="/artists"
+              className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-500"
+            >
+              Back to Artists
+            </Link>
+
+            <Link
+              href="/upload"
+              className="rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              Upload Music
+            </Link>
+          </div>
         </div>
       </SiteShell>
     );
@@ -205,7 +275,7 @@ export default function ArtistPage() {
       <div className="space-y-6">
         <div className="overflow-hidden rounded-[30px] border border-white/10 bg-white/[0.04]">
           <div className="relative h-56 w-full md:h-72">
-            {artist.coverURL ? (
+            {artist?.coverURL ? (
               <img
                 src={artist.coverURL}
                 alt={displayName}
@@ -215,7 +285,7 @@ export default function ArtistPage() {
               <div className="h-full w-full bg-[linear-gradient(120deg,rgba(147,51,234,0.45),rgba(30,41,59,0.85),rgba(59,130,246,0.35))]" />
             )}
 
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent" />
 
             <div className="absolute left-6 top-6 rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-white/75 backdrop-blur">
               Artist Profile
@@ -226,7 +296,7 @@ export default function ArtistPage() {
             <div className="-mt-16 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
               <div className="flex flex-col gap-4 md:flex-row md:items-end">
                 <div className="h-28 w-28 overflow-hidden rounded-[28px] border-4 border-black bg-white/10 shadow-2xl">
-                  {artist.photoURL ? (
+                  {artist?.photoURL ? (
                     <img
                       src={artist.photoURL}
                       alt={displayName}
@@ -240,13 +310,19 @@ export default function ArtistPage() {
                 </div>
 
                 <div className="pt-2">
-                  <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
-                    {displayName}
-                  </h1>
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+                      {displayName}
+                    </h1>
+
+                    <span className="rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-fuchsia-300">
+                      Artist
+                    </span>
+                  </div>
 
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-white/65">
-                    <span>{artist.genre || "Gospel"}</span>
-                    {artist.location ? (
+                    <span>{artist?.genre || "Gospel"}</span>
+                    {artist?.location ? (
                       <>
                         <span className="text-white/30">•</span>
                         <span>{artist.location}</span>
@@ -280,7 +356,7 @@ export default function ArtistPage() {
               </div>
             </div>
 
-            {artist.bio ? (
+            {artist?.bio ? (
               <div className="mt-6 max-w-3xl rounded-2xl border border-white/10 bg-black/20 p-5">
                 <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/45">
                   About
@@ -289,12 +365,25 @@ export default function ArtistPage() {
                   {artist.bio}
                 </p>
               </div>
-            ) : null}
+            ) : (
+              <div className="mt-6 max-w-3xl rounded-2xl border border-dashed border-white/10 bg-black/20 p-5">
+                <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/45">
+                  About
+                </div>
+                <p className="text-sm leading-7 text-white/60 md:text-base">
+                  This artist has songs on the platform, but the profile details
+                  are not fully set up yet.
+                </p>
+              </div>
+            )}
 
             <div className="mt-5 flex flex-wrap gap-3">
               <button
+                type="button"
                 onClick={handleShare}
-                className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/80 transition hover:bg-white/[0.08]"
+                title="Share profile"
+                aria-label="Share profile"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-sm text-white/80 transition hover:bg-white/[0.08]"
               >
                 {shareText}
               </button>
@@ -331,17 +420,25 @@ export default function ArtistPage() {
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {songs.map((song) => {
                 const songCover = song.coverURL || song.coverUrl || "";
+                const isCurrentSong = activeSongId === song.id;
+
                 return (
                   <div
                     key={song.id}
-                    className="overflow-hidden rounded-[24px] border border-white/10 bg-black/25 transition hover:bg-white/[0.04]"
+                    className={`overflow-hidden rounded-[24px] border bg-black/25 transition duration-300 ${
+                      isCurrentSong
+                        ? "border-fuchsia-500/70 shadow-[0_0_30px_rgba(217,70,239,0.25)] ring-1 ring-fuchsia-400/40 scale-[1.01]"
+                        : "border-white/10 hover:bg-white/[0.04]"
+                    }`}
                   >
                     <div className="relative aspect-[16/10] overflow-hidden bg-white/[0.04]">
                       {songCover ? (
                         <img
                           src={songCover}
                           alt={song.title || "Song cover"}
-                          className="h-full w-full object-cover"
+                          className={`h-full w-full object-cover transition duration-500 ${
+                            isCurrentSong ? "scale-105" : ""
+                          }`}
                         />
                       ) : (
                         <div className="grid h-full w-full place-items-center text-4xl text-white/20">
@@ -349,26 +446,33 @@ export default function ArtistPage() {
                         </div>
                       )}
 
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
 
-                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                      {isCurrentSong && (
+                        <div className="absolute right-3 top-3 rounded-full bg-fuchsia-500 px-2 py-1 text-[10px] font-semibold text-white">
+                          Playing
+                        </div>
+                      )}
+
+                      <div className="pointer-events-none absolute bottom-0 left-0 right-0 p-4">
                         <div className="line-clamp-1 text-lg font-semibold text-white">
                           {song.title || "Untitled Song"}
                         </div>
                         <div className="mt-1 text-xs text-white/65">
-                          {song.genre || artist.genre || "Gospel"}
+                          {song.genre || artist?.genre || "Gospel"}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between p-4">
                       <div className="text-xs text-white/55">
-                        {Number(song.plays || 0)} streams
+                        {Number(song.plays || song.streams || 0)} streams
                       </div>
 
                       <button
-                        className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs text-white/80 transition hover:bg-white/[0.1]"
+                        type="button"
                         onClick={() => handlePlay(song)}
+                        className="relative z-10 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs text-white/80 transition hover:bg-white/[0.1]"
                       >
                         Play
                       </button>

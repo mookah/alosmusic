@@ -1,6 +1,11 @@
 // lib/uploadSong.ts
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
+import {
+  getDownloadURL,
+  ref,
+  uploadBytesResumable,
+  UploadMetadata,
+} from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 
 type UploadSongParams = {
@@ -15,6 +20,37 @@ type UploadSongParams = {
 
 function safeFileName(name: string) {
   return name.replace(/[^\w.\-]+/g, "_");
+}
+
+function getAudioContentType(file: File) {
+  if (file.type && file.type.startsWith("audio/")) {
+    return file.type;
+  }
+
+  const lower = file.name.toLowerCase();
+
+  if (lower.endsWith(".mp3")) return "audio/mpeg";
+  if (lower.endsWith(".wav")) return "audio/wav";
+  if (lower.endsWith(".ogg")) return "audio/ogg";
+  if (lower.endsWith(".m4a")) return "audio/mp4";
+  if (lower.endsWith(".aac")) return "audio/aac";
+  if (lower.endsWith(".flac")) return "audio/flac";
+
+  return "audio/mpeg";
+}
+
+function getImageContentType(file: File) {
+  if (file.type && file.type.startsWith("image/")) {
+    return file.type;
+  }
+
+  const lower = file.name.toLowerCase();
+
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+
+  return "image/jpeg";
 }
 
 export async function uploadSongToFirebase({
@@ -32,10 +68,16 @@ export async function uploadSongToFirebase({
 
   const time = Date.now();
 
-  // upload audio
+  // upload audio with correct metadata
   const audioName = safeFileName(audioFile.name);
   const audioRef = ref(storage, `songs/${uid}/${time}_${audioName}`);
-  const audioTask = uploadBytesResumable(audioRef, audioFile);
+
+  const audioMetadata: UploadMetadata = {
+    contentType: getAudioContentType(audioFile),
+    cacheControl: "public,max-age=3600",
+  };
+
+  const audioTask = uploadBytesResumable(audioRef, audioFile, audioMetadata);
 
   const audioURL: string = await new Promise((resolve, reject) => {
     audioTask.on(
@@ -59,7 +101,13 @@ export async function uploadSongToFirebase({
   if (coverFile) {
     const coverName = safeFileName(coverFile.name);
     const coverRef = ref(storage, `covers/${uid}/${time}_${coverName}`);
-    const coverTask = uploadBytesResumable(coverRef, coverFile);
+
+    const coverMetadata: UploadMetadata = {
+      contentType: getImageContentType(coverFile),
+      cacheControl: "public,max-age=3600",
+    };
+
+    const coverTask = uploadBytesResumable(coverRef, coverFile, coverMetadata);
 
     coverURL = await new Promise((resolve, reject) => {
       coverTask.on(

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import LiveConcert from "@/components/LiveConcert";
 
 export default function Sidebar({ onAuth }: { onAuth: () => void }) {
   const pathname = usePathname();
@@ -15,7 +14,7 @@ export default function Sidebar({ onAuth }: { onAuth: () => void }) {
     }`;
 
   return (
-    <aside className="hidden md:block w-[250px] lg:w-[260px] shrink-0 border-r border-white/10 px-4 py-6">
+    <div className="h-full px-4 py-5">
       <div className="mb-3 text-xs uppercase tracking-[0.18em] text-white/40">
         Menu
       </div>
@@ -65,11 +64,7 @@ export default function Sidebar({ onAuth }: { onAuth: () => void }) {
         <div className="mt-2 text-[11px] leading-relaxed text-white/40">
           Admins approve uploads before publishing.
         </div>
-
-        <div className="mt-5">
-          <LiveConcert />
-        </div>
       </div>
-    </aside>
+    </div>
   );
 }

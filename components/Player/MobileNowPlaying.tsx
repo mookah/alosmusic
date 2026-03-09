@@ -7,6 +7,8 @@ type Track = {
   genre?: string;
   coverUrl?: string;
   audioUrl?: string;
+  coverURL?: string;
+  audioURL?: string;
 };
 
 type MobileNowPlayingProps = {
@@ -36,13 +38,16 @@ export default function MobileNowPlaying({
 }: MobileNowPlayingProps) {
   if (!open || !track) return null;
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const cover = track.coverUrl || track.coverURL || "";
+  const progress =
+    duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
 
   return (
     <div className="fixed inset-0 z-[120] bg-black/95 text-white">
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
         <h2 className="text-lg font-semibold">Now Playing</h2>
         <button
+          type="button"
           onClick={onClose}
           className="rounded-lg border border-white/10 px-3 py-1 text-sm text-white/80 hover:bg-white/10"
         >
@@ -52,9 +57,9 @@ export default function MobileNowPlaying({
 
       <div className="mx-auto flex max-w-md flex-col items-center px-6 py-8">
         <div className="mb-6 aspect-square w-full overflow-hidden rounded-2xl bg-white/5">
-          {track.coverUrl ? (
+          {cover ? (
             <img
-              src={track.coverUrl}
+              src={cover}
               alt={track.title || "Cover"}
               className="h-full w-full object-cover"
             />
@@ -83,15 +88,15 @@ export default function MobileNowPlaying({
           <input
             type="range"
             min={0}
-            max={duration || 0}
-            value={currentTime}
+            max={duration > 0 ? duration : 0}
+            value={Math.min(currentTime, duration || 0)}
             onChange={(e) => onSeek?.(Number(e.target.value))}
             className="w-full accent-purple-500"
           />
 
-          <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/10">
             <div
-              className="h-2 rounded-full bg-purple-500"
+              className="h-2 rounded-full bg-purple-500 transition-all"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -99,6 +104,7 @@ export default function MobileNowPlaying({
 
         <div className="mt-8 grid w-full grid-cols-3 gap-3">
           <button
+            type="button"
             onClick={() => onPlay?.()}
             className="rounded-2xl bg-purple-600 px-4 py-3 font-semibold hover:bg-purple-500"
           >
@@ -106,6 +112,7 @@ export default function MobileNowPlaying({
           </button>
 
           <button
+            type="button"
             onClick={() => onPause?.()}
             className="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 font-semibold hover:bg-white/10"
           >
@@ -113,6 +120,7 @@ export default function MobileNowPlaying({
           </button>
 
           <button
+            type="button"
             onClick={() => onStop?.()}
             className="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 font-semibold hover:bg-white/10"
           >
