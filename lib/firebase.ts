@@ -5,13 +5,13 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBDTiHTNQicJU4BQRrAAPdq6YDrcE8NKY",
-  authDomain: "alosmusic-f5bc9.firebaseapp.com",
-  projectId: "alosmusic-f5bc9",
-  storageBucket: "alosmusic-f5bc9.appspot.com",
-  messagingSenderId: "1040240070779",
-  appId: "1:1040240070779:web:1c45e2dc04fcc1419e92de",
-  measurementId: "G-DDM66G2RNN",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID!,
 };
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
