@@ -1,12 +1,22 @@
 "use client";
 
-import { Track } from "@/lib/playerStore";
+type SongCardTrack = {
+  id: string;
+  title: string;
+  artist: string;
+  genre?: string;
+  coverURL?: string;
+  audioURL?: string;
+};
 
-export default function SongCard({ track }: { track: Track }) {
+export default function SongCard({ track }: { track: SongCardTrack }) {
   const cover = track.coverURL || "/default-cover.jpg";
 
   function handlePlay() {
     if (typeof window === "undefined") return;
+
+    localStorage.setItem("alosmusic_active_song", track.id);
+    window.dispatchEvent(new Event("alos:active-song-changed"));
 
     window.dispatchEvent(
       new CustomEvent("alos:play", {
@@ -25,7 +35,7 @@ export default function SongCard({ track }: { track: Track }) {
   }
 
   return (
-    <div className="group overflow-hidden rounded-2xl border border-white/10 bg-black/30 hover:border-fuchsia-500/30 transition">
+    <div className="group overflow-hidden rounded-2xl border border-white/10 bg-black/30 transition hover:border-fuchsia-500/30">
       <div className="relative">
         <img
           src={cover}
@@ -34,8 +44,9 @@ export default function SongCard({ track }: { track: Track }) {
         />
 
         <button
+          type="button"
           onClick={handlePlay}
-          className="absolute bottom-3 right-3 rounded-full bg-black/70 px-3 py-1 text-xs text-white hover:bg-fuchsia-600 transition"
+          className="absolute bottom-3 right-3 rounded-full bg-black/70 px-3 py-1 text-xs text-white transition hover:bg-fuchsia-600"
         >
           ▶ Play
         </button>
