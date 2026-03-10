@@ -49,6 +49,57 @@ function normalizeTrack(song: SongDoc): PlayerTrack {
   };
 }
 
+function formatCount(num: number) {
+  if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)}B`;
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
+  return `${num}`;
+}
+
+function SongMenu({
+  onShare,
+  onDownload,
+}: {
+  onShare: () => void;
+  onDownload: () => void;
+}) {
+  return (
+    <details className="relative">
+      <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/80 transition hover:bg-white/[0.10]">
+        <span className="text-lg leading-none">⋮</span>
+      </summary>
+
+      <div className="absolute right-0 top-12 z-30 min-w-[160px] overflow-hidden rounded-2xl border border-white/10 bg-black/95 shadow-[0_20px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onShare();
+          }}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white/85 transition hover:bg-white/[0.06]"
+        >
+          <span>↗</span>
+          <span>Share</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDownload();
+          }}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white/85 transition hover:bg-white/[0.06]"
+        >
+          <span>↓</span>
+          <span>Download</span>
+        </button>
+      </div>
+    </details>
+  );
+}
+
 export default function BrowsePage() {
   const [songs, setSongs] = useState<SongDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,9 +168,12 @@ export default function BrowsePage() {
   }, [songs, search, activeGenre]);
 
   const featuredSong = filteredSongs[0] || songs[0] || null;
-  const trendingSongs = [...songs]
-    .sort((a, b) => (b.streams || 0) - (a.streams || 0))
-    .slice(0, 5);
+
+  const trendingSongs = useMemo(() => {
+    return [...songs]
+      .sort((a, b) => (b.streams || 0) - (a.streams || 0))
+      .slice(0, 5);
+  }, [songs]);
 
   function handlePlay(song: SongDoc, queueSource: SongDoc[], index: number) {
     const audioSrc = song.audioURL || song.audioUrl || "";
@@ -158,6 +212,53 @@ export default function BrowsePage() {
         },
       })
     );
+  }
+
+  async function handleShareSong(song: SongDoc) {
+    const title = song.title || "Untitled Song";
+    const artist = song.artist || "Unknown Artist";
+    const text = `${title} by ${artist}`;
+    const url =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/browse?song=${song.id}`
+        : "";
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${title} on ALOSMUSIC`,
+          text: `Listen to ${text} on ALOSMUSIC`,
+          url,
+        });
+      } else if (navigator.clipboard && url) {
+        await navigator.clipboard.writeText(url);
+        alert("Song link copied.");
+      }
+    } catch (error) {
+      console.error("Share failed:", error);
+    }
+  }
+
+  function handleDownloadSong(song: SongDoc) {
+    const audioSrc = song.audioURL || song.audioUrl || "";
+
+    if (!audioSrc) {
+      alert("This song has no downloadable audio yet.");
+      return;
+    }
+
+    try {
+      const link = document.createElement("a");
+      link.href = audioSrc;
+      link.download = `${song.title || "song"}.mp3`;
+      link.target = "_blank";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("Download could not start.");
+    }
   }
 
   return (
@@ -202,6 +303,7 @@ export default function BrowsePage() {
               return (
                 <button
                   key={genre}
+                  type="button"
                   onClick={() => setActiveGenre(genre)}
                   className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                     active
@@ -297,20 +399,27 @@ export default function BrowsePage() {
                       </div>
 
                       <div className="hidden text-sm text-white/45 md:block">
-                        {song.streams || 0} plays
+                        {formatCount(Number(song.streams || 0))} plays
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handlePlay(song, filteredSongs, index);
-                        }}
-                        className="rounded-full bg-fuchsia-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-500"
-                      >
-                        {isCurrentSong ? "Playing" : "Play"}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <SongMenu
+                          onShare={() => handleShareSong(song)}
+                          onDownload={() => handleDownloadSong(song)}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handlePlay(song, filteredSongs, index);
+                          }}
+                          className="rounded-full bg-fuchsia-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-500"
+                        >
+                          {isCurrentSong ? "Playing" : "Play"}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -351,11 +460,11 @@ export default function BrowsePage() {
                 </p>
 
                 <p className="mt-4 text-sm text-white/45">
-                  {featuredSong?.streams || 0} total plays
+                  {formatCount(Number(featuredSong?.streams || 0))} total plays
                 </p>
 
                 {featuredSong ? (
-                  <div className="mt-6 flex gap-3">
+                  <div className="mt-6 flex flex-wrap gap-3">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -371,6 +480,11 @@ export default function BrowsePage() {
                     >
                       Play now
                     </button>
+
+                    <SongMenu
+                      onShare={() => handleShareSong(featuredSong)}
+                      onDownload={() => handleDownloadSong(featuredSong)}
+                    />
 
                     <Link
                       href="/upload"
@@ -414,20 +528,27 @@ export default function BrowsePage() {
                       </div>
 
                       <span className="text-sm text-white/45">
-                        {song.streams || 0}
+                        {formatCount(Number(song.streams || 0))}
                       </span>
 
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handlePlay(song, trendingSongs, index);
-                        }}
-                        className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/[0.1]"
-                      >
-                        Play
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <SongMenu
+                          onShare={() => handleShareSong(song)}
+                          onDownload={() => handleDownloadSong(song)}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handlePlay(song, trendingSongs, index);
+                          }}
+                          className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/[0.1]"
+                        >
+                          Play
+                        </button>
+                      </div>
                     </div>
                   ))
                 ) : (

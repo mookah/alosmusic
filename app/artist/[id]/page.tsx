@@ -43,6 +43,57 @@ type Song = {
   artistId?: string;
 };
 
+function formatCount(num: number) {
+  if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)}B`;
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
+  return `${num}`;
+}
+
+function SongMenu({
+  onShare,
+  onDownload,
+}: {
+  onShare: () => void;
+  onDownload: () => void;
+}) {
+  return (
+    <details className="relative">
+      <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/80 transition hover:bg-white/[0.10]">
+        <span className="text-lg leading-none">⋮</span>
+      </summary>
+
+      <div className="absolute right-0 top-12 z-[80] w-40 overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 shadow-[0_24px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onShare();
+          }}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white/85 transition hover:bg-white/[0.06]"
+        >
+          <span>↗</span>
+          <span>Share</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDownload();
+          }}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white/85 transition hover:bg-white/[0.06]"
+        >
+          <span>↓</span>
+          <span>Download</span>
+        </button>
+      </div>
+    </details>
+  );
+}
+
 export default function ArtistPage() {
   const params = useParams();
   const id = typeof params?.id === "string" ? params.id : "";
@@ -150,6 +201,10 @@ export default function ArtistPage() {
 
   const followersCount = Number(artist?.followersCount || 0);
 
+  const playableSongs = useMemo(() => {
+    return songs.filter((song) => song.audioURL || song.audioUrl);
+  }, [songs]);
+
   const socialLinks = [
     { label: "Facebook", href: artist?.facebook },
     { label: "Instagram", href: artist?.instagram },
@@ -175,11 +230,51 @@ export default function ArtistPage() {
       setTimeout(() => setShareText("↗"), 1800);
     } catch (error) {
       console.error("Share failed:", error);
-      try {
+    }
+  }
+
+  async function handleShareSong(song: Song) {
+    const title = song.title || "Untitled Song";
+    const url =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/artist/${id}?song=${song.id}`
+        : "";
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${title} on ALOSMUSIC`,
+          text: `Listen to ${title} by ${displayName} on ALOSMUSIC`,
+          url,
+        });
+      } else if (navigator.clipboard && url) {
         await navigator.clipboard.writeText(url);
-        setShareText("✓");
-        setTimeout(() => setShareText("↗"), 1800);
-      } catch {}
+        alert("Song link copied.");
+      }
+    } catch (error) {
+      console.error("Share failed:", error);
+    }
+  }
+
+  function handleDownloadSong(song: Song) {
+    const audioSrc = song.audioURL || song.audioUrl || "";
+
+    if (!audioSrc) {
+      alert("This song has no downloadable audio yet.");
+      return;
+    }
+
+    try {
+      const link = document.createElement("a");
+      link.href = audioSrc;
+      link.download = `${song.title || "song"}.mp3`;
+      link.target = "_blank";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("Download could not start.");
     }
   }
 
@@ -226,6 +321,11 @@ export default function ArtistPage() {
         },
       })
     );
+  }
+
+  function handlePlayAll() {
+    if (!playableSongs.length) return;
+    handlePlay(playableSongs[0]);
   }
 
   if (loading) {
@@ -337,23 +437,61 @@ export default function ArtistPage() {
                   <div className="text-xs uppercase tracking-[0.18em] text-white/45">
                     Songs
                   </div>
-                  <div className="mt-2 text-2xl font-semibold">{songs.length}</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {songs.length}
+                  </div>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                   <div className="text-xs uppercase tracking-[0.18em] text-white/45">
                     Streams
                   </div>
-                  <div className="mt-2 text-2xl font-semibold">{totalPlays}</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {formatCount(totalPlays)}
+                  </div>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                   <div className="text-xs uppercase tracking-[0.18em] text-white/45">
                     Followers
                   </div>
-                  <div className="mt-2 text-2xl font-semibold">{followersCount}</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {formatCount(followersCount)}
+                  </div>
                 </div>
               </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handlePlayAll}
+                className="inline-flex items-center gap-2 rounded-full bg-fuchsia-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-500"
+              >
+                <span>▶</span>
+                <span>Play All</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleShare}
+                title="Share profile"
+                aria-label="Share profile"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-base text-white/80 transition hover:bg-white/[0.08]"
+              >
+                {shareText}
+              </button>
+
+              {socialLinks.map((item) => (
+                <Link
+                  key={item.label}
+                  href={item.href!}
+                  target="_blank"
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/80 transition hover:bg-white/[0.08]"
+                >
+                  {item.label}
+                </Link>
+              ))}
             </div>
 
             {artist?.bio ? (
@@ -376,36 +514,13 @@ export default function ArtistPage() {
                 </p>
               </div>
             )}
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={handleShare}
-                title="Share profile"
-                aria-label="Share profile"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-sm text-white/80 transition hover:bg-white/[0.08]"
-              >
-                {shareText}
-              </button>
-
-              {socialLinks.map((item) => (
-                <Link
-                  key={item.label}
-                  href={item.href!}
-                  target="_blank"
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/80 transition hover:bg-white/[0.08]"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
           </div>
         </div>
 
         <div className="rounded-[30px] border border-white/10 bg-white/[0.03] p-6">
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-semibold">Songs</h2>
+              <h2 className="text-2xl font-semibold text-white">Songs</h2>
               <p className="mt-1 text-sm text-white/55">
                 Music uploaded by {displayName}
               </p>
@@ -425,13 +540,13 @@ export default function ArtistPage() {
                 return (
                   <div
                     key={song.id}
-                    className={`overflow-hidden rounded-[24px] border bg-black/25 transition duration-300 ${
+                    className={`rounded-[24px] border bg-black/25 transition duration-300 ${
                       isCurrentSong
                         ? "border-fuchsia-500/70 shadow-[0_0_30px_rgba(217,70,239,0.25)] ring-1 ring-fuchsia-400/40 scale-[1.01]"
                         : "border-white/10 hover:bg-white/[0.04]"
                     }`}
                   >
-                    <div className="relative aspect-[16/10] overflow-hidden bg-white/[0.04]">
+                    <div className="relative aspect-[16/10] overflow-hidden rounded-t-[24px] bg-white/[0.04]">
                       {songCover ? (
                         <img
                           src={songCover}
@@ -466,16 +581,27 @@ export default function ArtistPage() {
 
                     <div className="flex items-center justify-between p-4">
                       <div className="text-xs text-white/55">
-                        {Number(song.plays || song.streams || 0)} streams
+                        {formatCount(Number(song.plays || song.streams || 0))} streams
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handlePlay(song)}
-                        className="relative z-10 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs text-white/80 transition hover:bg-white/[0.1]"
-                      >
-                        Play
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <SongMenu
+                          onShare={() => handleShareSong(song)}
+                          onDownload={() => handleDownloadSong(song)}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => handlePlay(song)}
+                          className={`relative z-10 rounded-full px-3 py-1.5 text-xs transition ${
+                            isCurrentSong
+                              ? "bg-fuchsia-500 text-white"
+                              : "border border-white/10 bg-white/[0.05] text-white/80 hover:bg-white/[0.1]"
+                          }`}
+                        >
+                          {isCurrentSong ? "Playing" : "Play"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

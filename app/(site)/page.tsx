@@ -33,6 +33,50 @@ type HeroSlide = {
   songs: SongDoc[];
 };
 
+function SongMenu({
+  onShare,
+  onDownload,
+}: {
+  onShare: () => void;
+  onDownload: () => void;
+}) {
+  return (
+    <details className="relative">
+      <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-black/65 text-white/80 backdrop-blur transition hover:bg-white/[0.12]">
+        <span className="text-lg leading-none">⋮</span>
+      </summary>
+
+      <div className="absolute right-0 top-12 z-[90] w-40 overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 shadow-[0_24px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onShare();
+          }}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white/85 transition hover:bg-white/[0.06]"
+        >
+          <span>↗</span>
+          <span>Share</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDownload();
+          }}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white/85 transition hover:bg-white/[0.06]"
+        >
+          <span>↓</span>
+          <span>Download</span>
+        </button>
+      </div>
+    </details>
+  );
+}
+
 export default function HomePage() {
   const [songs, setSongs] = useState<SongDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,6 +245,52 @@ export default function HomePage() {
     }
   }
 
+  async function handleShareSong(song: SongDoc) {
+    const title = song.title || "Untitled Song";
+    const artist = song.artist || "Unknown Artist";
+    const url =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/?song=${song.id}`
+        : "";
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${title} on ALOSMUSIC`,
+          text: `Listen to ${title} by ${artist} on ALOSMUSIC`,
+          url,
+        });
+      } else if (navigator.clipboard && url) {
+        await navigator.clipboard.writeText(url);
+        alert("Song link copied.");
+      }
+    } catch (error) {
+      console.error("Share failed:", error);
+    }
+  }
+
+  function handleDownloadSong(song: SongDoc) {
+    const audioSrc = song.audioURL || "";
+
+    if (!audioSrc) {
+      alert("This song has no downloadable audio yet.");
+      return;
+    }
+
+    try {
+      const link = document.createElement("a");
+      link.href = audioSrc;
+      link.download = `${song.title || "song"}.mp3`;
+      link.target = "_blank";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("Download could not start.");
+    }
+  }
+
   const totalArtists = new Set(
     songs.map((song) => (song.artist || "Unknown Artist").trim())
   ).size;
@@ -357,13 +447,20 @@ export default function HomePage() {
                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
                           {song.audioURL && (
-                            <button
-                              type="button"
-                              onClick={() => handlePlay(song.id)}
-                              className="absolute bottom-3 right-3 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-fuchsia-600"
-                            >
-                              ▶ Play
-                            </button>
+                            <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                              <SongMenu
+                                onShare={() => handleShareSong(song)}
+                                onDownload={() => handleDownloadSong(song)}
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() => handlePlay(song.id)}
+                                className="rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-fuchsia-600"
+                              >
+                                ▶ Play
+                              </button>
+                            </div>
                           )}
                         </div>
 
@@ -476,13 +573,20 @@ export default function HomePage() {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-80" />
 
                     {song.audioURL ? (
-                      <button
-                        type="button"
-                        onClick={() => handlePlay(song.id)}
-                        className="absolute bottom-3 right-3 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-fuchsia-600"
-                      >
-                        ▶ Play
-                      </button>
+                      <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                        <SongMenu
+                          onShare={() => handleShareSong(song)}
+                          onDownload={() => handleDownloadSong(song)}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => handlePlay(song.id)}
+                          className="rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-fuchsia-600"
+                        >
+                          ▶ Play
+                        </button>
+                      </div>
                     ) : (
                       <span className="absolute bottom-3 right-3 rounded-full bg-black/60 px-3 py-1.5 text-xs text-white/70 backdrop-blur">
                         No Audio
