@@ -48,7 +48,7 @@ export default function MobileHeader({
           </Link>
 
           <Link
-            href="/signup"
+            href="/auth"
             className="rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-xs font-semibold text-fuchsia-200 transition hover:bg-fuchsia-500/20"
           >
             Sign up
