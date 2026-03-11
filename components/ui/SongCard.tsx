@@ -37,10 +37,11 @@ export default function SongCard({
     <div
       className={`group overflow-hidden rounded-[24px] border transition ${
         active
-          ? "border-fuchsia-500/50 bg-white/[0.06] shadow-[0_0_30px_rgba(217,70,239,0.2)]"
+          ? "border-fuchsia-500/60 bg-white/[0.06] shadow-[0_0_30px_rgba(217,70,239,0.2)]"
           : "border-white/10 bg-white/[0.03] hover:border-fuchsia-500/30 hover:bg-white/[0.05]"
       } ${className}`}
     >
+      {/* Cover */}
       <div className="relative aspect-square overflow-hidden">
         <Image
           src={coverURL}
@@ -56,10 +57,11 @@ export default function SongCard({
           onClick={onPlay}
           className="absolute bottom-3 right-3 rounded-full bg-gradient-to-r from-fuchsia-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(168,85,247,0.35)] transition hover:scale-[1.03]"
         >
-          {active ? "Playing" : "Play"}
+          {active ? "Playing" : "▶ Play"}
         </button>
       </div>
 
+      {/* Info */}
       <div className="p-4">
         <div className="truncate text-base font-semibold text-white">
           {title}

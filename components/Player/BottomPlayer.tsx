@@ -1,5 +1,6 @@
 "use client";
 
+import { incrementSongPlays } from "@/lib/songStats";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
@@ -111,6 +112,7 @@ export default function BottomPlayer() {
       await audio.play();
       setIsPlaying(true);
       notifyActiveSong(normalizedTrack.id);
+      incrementSongPlays(normalizedTrack.id);
     } catch {
       setIsPlaying(false);
     }
@@ -332,7 +334,10 @@ export default function BottomPlayer() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showQueue]);
 
-  if (pathname === "/login" || pathname === "/signup") return null;
+  if (pathname === "/auth" || pathname === "/login" || pathname === "/signup") {
+    return null;
+  }
+
   if (!track) return null;
 
   const cover = track.coverURL || track.coverUrl || "";

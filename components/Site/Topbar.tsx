@@ -78,14 +78,14 @@ export default function Topbar({ onAuth }: { onAuth?: () => void }) {
           </Link>
 
           <Link
-            href="/login"
+            href="/auth"
             className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
           >
             Log in
           </Link>
 
           <Link
-            href="/signup"
+            href="/auth"
             className="hidden rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-500/20 md:block"
           >
             Sign up

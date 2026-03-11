@@ -1,4 +1,5 @@
 // lib/uploadSong.ts
+
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import {
   getDownloadURL,
@@ -12,6 +13,7 @@ type UploadSongParams = {
   title: string;
   artist?: string;
   genre?: string;
+  country?: string;
   audioFile: File;
   coverFile?: File;
   uid: string;
@@ -22,62 +24,42 @@ function safeFileName(name: string) {
   return name.replace(/[^\w.\-]+/g, "_");
 }
 
-function getAudioContentType(file: File) {
-  if (file.type && file.type.startsWith("audio/")) {
-    return file.type;
-  }
+function normalizeCountry(input?: string) {
+  const value = (input || "").toLowerCase().trim();
 
-  const lower = file.name.toLowerCase();
+  if (!value) return "Zambia";
 
-  if (lower.endsWith(".mp3")) return "audio/mpeg";
-  if (lower.endsWith(".wav")) return "audio/wav";
-  if (lower.endsWith(".ogg")) return "audio/ogg";
-  if (lower.endsWith(".m4a")) return "audio/mp4";
-  if (lower.endsWith(".aac")) return "audio/aac";
-  if (lower.endsWith(".flac")) return "audio/flac";
+  if (value.includes("zambia")) return "Zambia";
+  if (value.includes("nigeria")) return "Nigeria";
+  if (value.includes("zimbabwe")) return "Zimbabwe";
+  if (value.includes("ghana")) return "Ghana";
+  if (value.includes("south africa")) return "South Africa";
+  if (value.includes("kenya")) return "Kenya";
+  if (value.includes("tanzania")) return "Tanzania";
 
-  return "audio/mpeg";
-}
-
-function getImageContentType(file: File) {
-  if (file.type && file.type.startsWith("image/")) {
-    return file.type;
-  }
-
-  const lower = file.name.toLowerCase();
-
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".webp")) return "image/webp";
-
-  return "image/jpeg";
+  return "Zambia";
 }
 
 export async function uploadSongToFirebase({
   title,
   artist = "Unknown Artist",
   genre = "Gospel",
+  country = "Zambia",
   audioFile,
   coverFile,
   uid,
   onProgress,
 }: UploadSongParams) {
-  if (!uid) throw new Error("You must be logged in.");
-  if (!title.trim()) throw new Error("Song title is required.");
-  if (!audioFile) throw new Error("Audio file is required.");
+  if (!uid) throw new Error("Login required.");
+  if (!audioFile) throw new Error("Audio file required.");
+
+  const normalizedCountry = normalizeCountry(country);
 
   const time = Date.now();
 
-  // upload audio with correct metadata
-  const audioName = safeFileName(audioFile.name);
-  const audioRef = ref(storage, `songs/${uid}/${time}_${audioName}`);
+  const audioRef = ref(storage, `songs/${uid}/${time}_${safeFileName(audioFile.name)}`);
 
-  const audioMetadata: UploadMetadata = {
-    contentType: getAudioContentType(audioFile),
-    cacheControl: "public,max-age=3600",
-  };
-
-  const audioTask = uploadBytesResumable(audioRef, audioFile, audioMetadata);
+  const audioTask = uploadBytesResumable(audioRef, audioFile);
 
   const audioURL: string = await new Promise((resolve, reject) => {
     audioTask.on(
@@ -95,19 +77,15 @@ export async function uploadSongToFirebase({
     );
   });
 
-  // upload cover or use default
   let coverURL = "/default-cover.jpg";
 
   if (coverFile) {
-    const coverName = safeFileName(coverFile.name);
-    const coverRef = ref(storage, `covers/${uid}/${time}_${coverName}`);
+    const coverRef = ref(
+      storage,
+      `covers/${uid}/${time}_${safeFileName(coverFile.name)}`
+    );
 
-    const coverMetadata: UploadMetadata = {
-      contentType: getImageContentType(coverFile),
-      cacheControl: "public,max-age=3600",
-    };
-
-    const coverTask = uploadBytesResumable(coverRef, coverFile, coverMetadata);
+    const coverTask = uploadBytesResumable(coverRef, coverFile);
 
     coverURL = await new Promise((resolve, reject) => {
       coverTask.on(
@@ -124,8 +102,9 @@ export async function uploadSongToFirebase({
 
   const docRef = await addDoc(collection(db, "songs"), {
     title: title.trim(),
-    artist: artist.trim() || "Unknown Artist",
-    genre: genre.trim() || "Gospel",
+    artist: artist.trim(),
+    genre,
+    country: normalizedCountry,
     audioURL,
     coverURL,
     uid,
