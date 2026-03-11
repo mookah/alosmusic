@@ -68,10 +68,10 @@ export default function BottomPlayer() {
   function normalizeTrack(item: Track): Track {
     return {
       ...item,
-      coverURL: item.coverURL || item.coverUrl || "",
-      coverUrl: item.coverUrl || item.coverURL || "",
-      audioURL: item.audioURL || item.audioUrl || "",
-      audioUrl: item.audioUrl || item.audioURL || "",
+      coverURL: (item.coverURL || item.coverUrl || "").trim(),
+      coverUrl: (item.coverUrl || item.coverURL || "").trim(),
+      audioURL: (item.audioURL || item.audioUrl || "").trim(),
+      audioUrl: (item.audioUrl || item.audioURL || "").trim(),
     };
   }
 
@@ -81,10 +81,10 @@ export default function BottomPlayer() {
 
     const normalizedTrack = normalizeTrack(nextTrack);
     const normalizedQueue = list.map(normalizeTrack);
-    const src = normalizedTrack.audioURL || normalizedTrack.audioUrl || "";
+    const src = (normalizedTrack.audioURL || normalizedTrack.audioUrl || "").trim();
 
     console.log("TRACK RECEIVED:", normalizedTrack);
-    console.log("AUDIO SRC:", src);
+    console.log("AUDIO SRC RAW:", JSON.stringify(src));
 
     if (!src) {
       console.error("Missing audio source:", normalizedTrack);
@@ -105,6 +105,10 @@ export default function BottomPlayer() {
       setShowPlayer(true);
 
       audio.pause();
+      audio.currentTime = 0;
+      audio.removeAttribute("src");
+      audio.load();
+
       audio.src = src;
       audio.load();
 
@@ -175,7 +179,6 @@ export default function BottomPlayer() {
 
     audio.preload = "auto";
     audio.volume = volume;
-    audio.crossOrigin = "anonymous";
 
     audioRef.current = audio;
 
@@ -214,7 +217,7 @@ export default function BottomPlayer() {
     const onError = () => {
       const mediaError = audio.error;
       console.error("Audio failed to load:", {
-        src: audio.src,
+        src: JSON.stringify(audio.src),
         code: mediaError?.code,
         message:
           mediaError?.code === 1
