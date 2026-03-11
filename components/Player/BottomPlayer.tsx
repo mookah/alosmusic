@@ -83,6 +83,9 @@ export default function BottomPlayer() {
     const normalizedQueue = list.map(normalizeTrack);
     const src = normalizedTrack.audioURL || normalizedTrack.audioUrl || "";
 
+    console.log("TRACK RECEIVED:", normalizedTrack);
+    console.log("AUDIO SRC:", src);
+
     if (!src) {
       console.error("Missing audio source:", normalizedTrack);
       setIsPlaying(false);
@@ -102,11 +105,7 @@ export default function BottomPlayer() {
       setShowPlayer(true);
 
       audio.pause();
-
-      if (audio.src !== src) {
-        audio.src = src;
-      }
-
+      audio.src = src;
       audio.load();
 
       const playPromise = audio.play();
@@ -227,6 +226,8 @@ export default function BottomPlayer() {
             : mediaError?.code === 4
             ? "MEDIA_ERR_SRC_NOT_SUPPORTED"
             : "Unknown media error",
+        networkState: audio.networkState,
+        readyState: audio.readyState,
       });
       setIsPlaying(false);
     };
@@ -266,6 +267,8 @@ export default function BottomPlayer() {
     function onPlayEvent(event: Event) {
       const customEvent = event as CustomEvent<PlayEventDetail>;
       const detail = customEvent.detail;
+
+      console.log("Received alos:play event:", detail);
 
       const nextTrack: Track = {
         id: detail.id,
