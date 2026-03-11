@@ -29,17 +29,33 @@ export default function HotlistRow({
   if (!tracks || tracks.length === 0) return null;
 
   function handlePlay(track: Track) {
+    const normalizedQueue = tracks.map((item) => ({
+      ...item,
+      coverURL: item.coverURL || item.coverUrl || "/default-cover.jpg",
+      coverUrl: item.coverUrl || item.coverURL || "/default-cover.jpg",
+      audioURL: item.audioURL || item.audioUrl || "",
+      audioUrl: item.audioUrl || item.audioURL || "",
+    }));
+
+    const normalizedTrack = {
+      ...track,
+      coverURL: track.coverURL || track.coverUrl || "/default-cover.jpg",
+      coverUrl: track.coverUrl || track.coverURL || "/default-cover.jpg",
+      audioURL: track.audioURL || track.audioUrl || "",
+      audioUrl: track.audioUrl || track.audioURL || "",
+    };
+
+    if (!normalizedTrack.audioURL) {
+      console.error("No audio URL found for track:", normalizedTrack);
+      return;
+    }
+
     window.dispatchEvent(
       new CustomEvent("alos:play", {
         detail: {
-          id: track.id,
-          title: track.title,
-          artist: track.artist,
-          genre: track.genre,
-          coverURL: track.coverURL || track.coverUrl,
-          audioURL: track.audioURL || track.audioUrl,
-          queue: tracks,
-          startIndex: tracks.findIndex((t) => t.id === track.id),
+          ...normalizedTrack,
+          queue: normalizedQueue,
+          startIndex: normalizedQueue.findIndex((t) => t.id === track.id),
         },
       })
     );

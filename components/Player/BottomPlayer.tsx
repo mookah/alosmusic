@@ -84,6 +84,7 @@ export default function BottomPlayer() {
     const src = normalizedTrack.audioURL || normalizedTrack.audioUrl || "";
 
     if (!src) {
+      console.error("Missing audio source:", normalizedTrack);
       setIsPlaying(false);
       return;
     }
@@ -104,7 +105,6 @@ export default function BottomPlayer() {
         audio.pause();
         audio.removeAttribute("src");
         audio.load();
-
         audio.src = src;
         audio.load();
       }
@@ -113,7 +113,8 @@ export default function BottomPlayer() {
       setIsPlaying(true);
       notifyActiveSong(normalizedTrack.id);
       incrementSongPlays(normalizedTrack.id);
-    } catch {
+    } catch (error) {
+      console.error("Playback failed:", error);
       setIsPlaying(false);
     }
   }
@@ -156,7 +157,8 @@ export default function BottomPlayer() {
           setIsPlaying(true);
           setShowPlayer(true);
         })
-        .catch(() => {
+        .catch((error) => {
+          console.error("Resume failed:", error);
           setIsPlaying(false);
         });
     } else {
@@ -206,6 +208,7 @@ export default function BottomPlayer() {
     };
 
     const onError = () => {
+      console.error("Audio failed to load:", audio.src);
       setIsPlaying(false);
     };
 
