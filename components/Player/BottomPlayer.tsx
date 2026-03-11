@@ -101,15 +101,19 @@ export default function BottomPlayer() {
       setDuration(0);
       setShowPlayer(true);
 
+      audio.pause();
+
       if (audio.src !== src) {
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load();
         audio.src = src;
-        audio.load();
       }
 
-      await audio.play();
+      audio.load();
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        await playPromise;
+      }
+
       setIsPlaying(true);
       notifyActiveSong(normalizedTrack.id);
       incrementSongPlays(normalizedTrack.id);
@@ -170,8 +174,9 @@ export default function BottomPlayer() {
   useEffect(() => {
     const audio = new Audio();
 
-    audio.preload = "metadata";
+    audio.preload = "auto";
     audio.volume = volume;
+    audio.crossOrigin = "anonymous";
 
     audioRef.current = audio;
 
@@ -208,7 +213,21 @@ export default function BottomPlayer() {
     };
 
     const onError = () => {
-      console.error("Audio failed to load:", audio.src);
+      const mediaError = audio.error;
+      console.error("Audio failed to load:", {
+        src: audio.src,
+        code: mediaError?.code,
+        message:
+          mediaError?.code === 1
+            ? "MEDIA_ERR_ABORTED"
+            : mediaError?.code === 2
+            ? "MEDIA_ERR_NETWORK"
+            : mediaError?.code === 3
+            ? "MEDIA_ERR_DECODE"
+            : mediaError?.code === 4
+            ? "MEDIA_ERR_SRC_NOT_SUPPORTED"
+            : "Unknown media error",
+      });
       setIsPlaying(false);
     };
 
