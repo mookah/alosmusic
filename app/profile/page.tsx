@@ -6,7 +6,7 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -15,6 +15,12 @@ import {
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import SiteShell from "@/components/Site/SiteShell";
 import { auth, db, storage } from "@/lib/firebase";
+import {
+  checkIsAdmin,
+  deleteSong,
+  setSongApproval,
+  updateSongDetails,
+} from "@/lib/songActions";
 
 type ArtistProfile = {
   displayName?: string;
@@ -34,6 +40,8 @@ type Song = {
   audioURL: string;
   coverURL: string;
   uid: string;
+  streams?: number;
+  approved?: boolean;
 };
 
 export default function ProfilePage() {
@@ -41,6 +49,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
@@ -53,16 +63,29 @@ export default function ProfilePage() {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
 
+  const [editingSongId, setEditingSongId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editArtist, setEditArtist] = useState("");
+  const [editGenre, setEditGenre] = useState("");
+  const [songActionLoading, setSongActionLoading] = useState<string | null>(null);
+
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeSongs: (() => void) | null = null;
+
+    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
 
       if (!currentUser) {
+        setSongs([]);
+        setIsAdmin(false);
         setLoading(false);
         return;
       }
 
       try {
+        const adminStatus = await checkIsAdmin(currentUser.uid);
+        setIsAdmin(adminStatus);
+
         const artistRef = doc(db, "artists", currentUser.uid);
         const artistSnap = await getDoc(artistRef);
 
@@ -76,28 +99,56 @@ export default function ProfilePage() {
           setCoverURL(data.coverURL || "/default-cover.jpg");
         } else {
           setDisplayName(currentUser.displayName || "");
+          setBio("");
+          setMinistry("");
+          setLocation("");
+          setPhotoURL("/default-avatar.jpg");
+          setCoverURL("/default-cover.jpg");
         }
 
         const songsQ = query(
           collection(db, "songs"),
           where("uid", "==", currentUser.uid)
         );
-        const songsSnap = await getDocs(songsQ);
 
-        const mySongs = songsSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Song[];
+        unsubscribeSongs = onSnapshot(
+          songsQ,
+          (songsSnap) => {
+            const mySongs = songsSnap.docs.map((docSnap) => {
+              const data = docSnap.data();
 
-        setSongs(mySongs);
+              return {
+                id: docSnap.id,
+                title: data.title || "",
+                artist: data.artist || "",
+                genre: data.genre || "",
+                audioURL: data.audioURL || "",
+                coverURL: data.coverURL || "/default-cover.jpg",
+                uid: data.uid || "",
+                streams: data.streams ?? 0,
+                approved: data.approved ?? false,
+              };
+            }) as Song[];
+
+            setSongs(mySongs);
+          },
+          (error) => {
+            console.error("Songs listener failed:", error);
+            setMessage("Failed to load songs.");
+          }
+        );
       } catch (error: any) {
+        console.error("Failed to load profile:", error);
         setMessage(error?.message || "Failed to load profile.");
       } finally {
         setLoading(false);
       }
     });
 
-    return () => unsub();
+    return () => {
+      unsubAuth();
+      if (unsubscribeSongs) unsubscribeSongs();
+    };
   }, []);
 
   async function handleSaveProfile(e: React.FormEvent<HTMLFormElement>) {
@@ -151,9 +202,68 @@ export default function ProfilePage() {
       setCoverFile(null);
       setMessage("Profile updated successfully.");
     } catch (error: any) {
+      console.error("Failed to save profile:", error);
       setMessage(error?.message || "Failed to save profile.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function startEditSong(song: Song) {
+    setEditingSongId(song.id);
+    setEditTitle(song.title || "");
+    setEditArtist(song.artist || "");
+    setEditGenre(song.genre || "");
+  }
+
+  function cancelEditSong() {
+    setEditingSongId(null);
+    setEditTitle("");
+    setEditArtist("");
+    setEditGenre("");
+  }
+
+  async function handleSaveSong(songId: string) {
+    try {
+      setSongActionLoading(songId);
+      await updateSongDetails(songId, {
+        title: editTitle.trim(),
+        artist: editArtist.trim(),
+        genre: editGenre.trim(),
+      });
+      cancelEditSong();
+    } catch (error) {
+      console.error(error);
+      alert("Failed to update song.");
+    } finally {
+      setSongActionLoading(null);
+    }
+  }
+
+  async function handleDeleteSong(song: Song) {
+    const ok = confirm(`Delete "${song.title}"?`);
+    if (!ok) return;
+
+    try {
+      setSongActionLoading(song.id);
+      await deleteSong(song.id, song.audioURL, song.coverURL);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to delete song.");
+    } finally {
+      setSongActionLoading(null);
+    }
+  }
+
+  async function handleToggleApproval(song: Song) {
+    try {
+      setSongActionLoading(song.id);
+      await setSongApproval(song.id, !song.approved);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to update approval status.");
+    } finally {
+      setSongActionLoading(null);
     }
   }
 
@@ -194,6 +304,11 @@ export default function ProfilePage() {
                     {displayName || "My Profile"}
                   </h1>
                   <p className="text-sm text-white/60">{user.email}</p>
+                  {isAdmin && (
+                    <div className="mt-2 inline-block rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-300">
+                      Admin
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -204,7 +319,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+        <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
           <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
             <h2 className="mb-4 text-xl font-semibold text-white">Edit Profile</h2>
 
@@ -286,27 +401,131 @@ export default function ProfilePage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {songs.map((song) => (
-                  <div
-                    key={song.id}
-                    className="flex items-center gap-4 rounded-2xl border border-white/10 bg-black/30 p-3"
-                  >
-                    <img
-                      src={song.coverURL || "/default-cover.jpg"}
-                      alt={song.title}
-                      className="h-16 w-16 rounded-xl object-cover"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium text-white">{song.title}</div>
-                      <div className="truncate text-sm text-white/60">
-                        {song.artist || "Unknown Artist"} • {song.genre || "Gospel"}
+                {songs.map((song) => {
+                  const isEditing = editingSongId === song.id;
+                  const isBusy = songActionLoading === song.id;
+
+                  return (
+                    <div
+                      key={song.id}
+                      className="rounded-2xl border border-white/10 bg-black/30 p-3"
+                    >
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+                        <img
+                          src={song.coverURL || "/default-cover.jpg"}
+                          alt={song.title || "Song cover"}
+                          className="h-16 w-16 rounded-xl object-cover"
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <input
+                                type="text"
+                                value={editTitle}
+                                onChange={(e) => setEditTitle(e.target.value)}
+                                placeholder="Song title"
+                                className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-sm text-white outline-none"
+                              />
+                              <input
+                                type="text"
+                                value={editArtist}
+                                onChange={(e) => setEditArtist(e.target.value)}
+                                placeholder="Artist"
+                                className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-sm text-white outline-none"
+                              />
+                              <input
+                                type="text"
+                                value={editGenre}
+                                onChange={(e) => setEditGenre(e.target.value)}
+                                placeholder="Genre"
+                                className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-sm text-white outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              <div className="truncate font-medium text-white">
+                                {song.title || "Untitled"}
+                              </div>
+                              <div className="truncate text-sm text-white/60">
+                                {song.artist || "Unknown Artist"} • {song.genre || "Gospel"}
+                              </div>
+                              <div className="mt-1 text-xs text-white/45">
+                                {song.streams ?? 0} streams •{" "}
+                                {song.approved ? "Approved" : "Pending"}
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        <audio controls className="w-full xl:w-44">
+                          <source src={song.audioURL} />
+                        </audio>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveSong(song.id)}
+                              disabled={isBusy}
+                              className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
+                            >
+                              {isBusy ? "Saving..." : "Save Song"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={cancelEditSong}
+                              disabled={isBusy}
+                              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-60"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startEditSong(song)}
+                              disabled={isBusy}
+                              className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSong(song)}
+                              disabled={isBusy}
+                              className="rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+                            >
+                              {isBusy ? "Deleting..." : "Delete"}
+                            </button>
+
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleApproval(song)}
+                                disabled={isBusy}
+                                className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-500 disabled:opacity-60"
+                              >
+                                {song.approved ? "Unapprove" : "Approve"}
+                              </button>
+                            )}
+
+                            {isAdmin && (
+                              <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300">
+                                Admin can remove copyright or unwanted uploads
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
-                    <audio controls className="w-44">
-                      <source src={song.audioURL} />
-                    </audio>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

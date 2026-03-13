@@ -48,7 +48,8 @@ export default function Sidebar({ onAuth }: { onAuth: () => void }) {
           Upload
         </Link>
 
-        <Link className={item("/artist-profile")} href="/artist-profile">
+        {/* FIXED ROUTE */}
+        <Link className={item("/profile")} href="/profile">
           My Profile
         </Link>
       </div>

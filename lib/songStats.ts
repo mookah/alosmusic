@@ -1,13 +1,32 @@
-import { doc, updateDoc, increment } from "firebase/firestore";
+import { doc, increment, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-const countedSongs = new Set<string>();
+const memoryCountedSongs = new Set<string>();
+
+function getStreamKey(songId: string) {
+  return `alosmusic_stream_counted_${songId}`;
+}
+
+function hasCountedInSession(songId: string) {
+  if (typeof window === "undefined") return false;
+  return sessionStorage.getItem(getStreamKey(songId)) === "true";
+}
+
+function markCountedInSession(songId: string) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(getStreamKey(songId), "true");
+}
 
 export async function incrementSongPlays(songId: string) {
   if (!songId) return;
-  if (countedSongs.has(songId)) return;
 
-  countedSongs.add(songId);
+  if (memoryCountedSongs.has(songId)) return;
+  if (hasCountedInSession(songId)) {
+    memoryCountedSongs.add(songId);
+    return;
+  }
+
+  memoryCountedSongs.add(songId);
 
   try {
     const ref = doc(db, "songs", songId);
@@ -15,8 +34,10 @@ export async function incrementSongPlays(songId: string) {
     await updateDoc(ref, {
       streams: increment(1),
     });
+
+    markCountedInSession(songId);
   } catch (error) {
     console.error("Failed to update stream count:", error);
-    countedSongs.delete(songId);
+    memoryCountedSongs.delete(songId);
   }
 }

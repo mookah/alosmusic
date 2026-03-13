@@ -41,6 +41,7 @@ export default function BottomPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const queueRef = useRef<Track[]>([]);
   const currentIndexRef = useRef(-1);
+  const countedCurrentTrackRef = useRef(false);
 
   const [track, setTrack] = useState<Track | null>(null);
   const [queue, setQueue] = useState<Track[]>([]);
@@ -93,6 +94,8 @@ export default function BottomPlayer() {
     }
 
     try {
+      countedCurrentTrackRef.current = false;
+
       setTrack(normalizedTrack);
       setQueue(normalizedQueue);
       setCurrentIndex(index);
@@ -119,7 +122,6 @@ export default function BottomPlayer() {
 
       setIsPlaying(true);
       notifyActiveSong(normalizedTrack.id);
-      incrementSongPlays(normalizedTrack.id);
     } catch (error) {
       console.error("Playback failed:", error);
       setIsPlaying(false);
@@ -184,6 +186,15 @@ export default function BottomPlayer() {
 
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime || 0);
+
+      if (
+        track?.id &&
+        !countedCurrentTrackRef.current &&
+        audio.currentTime >= 5
+      ) {
+        countedCurrentTrackRef.current = true;
+        incrementSongPlays(track.id);
+      }
     };
 
     const onLoadedMetadata = () => {
@@ -204,6 +215,8 @@ export default function BottomPlayer() {
     const onEnded = () => {
       const list = queueRef.current;
       const index = currentIndexRef.current;
+
+      countedCurrentTrackRef.current = false;
 
       if (!list.length) {
         setIsPlaying(false);
@@ -258,7 +271,7 @@ export default function BottomPlayer() {
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
     };
-  }, []);
+  }, [track?.id, volume]);
 
   useEffect(() => {
     const audio = audioRef.current;
