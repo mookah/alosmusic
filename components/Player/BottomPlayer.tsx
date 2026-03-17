@@ -1,7 +1,7 @@
 "use client";
 
 import { incrementSongPlays } from "@/lib/songStats";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { usePathname } from "next/navigation";
 
 type Track = {
@@ -35,10 +35,24 @@ function formatTime(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function normalizeTrack(item: Track): Track {
+  const cover = (item.coverURL || item.coverUrl || "").trim();
+  const audio = (item.audioURL || item.audioUrl || "").trim();
+
+  return {
+    ...item,
+    coverURL: cover,
+    coverUrl: cover,
+    audioURL: audio,
+    audioUrl: audio,
+  };
+}
+
 export default function BottomPlayer() {
   const pathname = usePathname();
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const trackRef = useRef<Track | null>(null);
   const queueRef = useRef<Track[]>([]);
   const currentIndexRef = useRef(-1);
   const countedCurrentTrackRef = useRef(false);
@@ -53,6 +67,10 @@ export default function BottomPlayer() {
   const [showPlayer, setShowPlayer] = useState(true);
   const [showQueue, setShowQueue] = useState(false);
 
+  useEffect(() => {
+    trackRef.current = track;
+  }, [track]);
+
   const nextUp = useMemo(() => {
     if (!queue.length || currentIndex < 0) return [];
     const afterCurrent = queue.slice(currentIndex + 1);
@@ -60,75 +78,72 @@ export default function BottomPlayer() {
     return [...afterCurrent, ...beforeCurrent];
   }, [queue, currentIndex]);
 
-  function notifyActiveSong(songId: string) {
+  const notifyActiveSong = useCallback((songId: string) => {
     if (typeof window === "undefined") return;
     localStorage.setItem("alosmusic_active_song", songId);
     window.dispatchEvent(new Event("alos:active-song-changed"));
-  }
+  }, []);
 
-  function normalizeTrack(item: Track): Track {
-    return {
-      ...item,
-      coverURL: (item.coverURL || item.coverUrl || "").trim(),
-      coverUrl: (item.coverUrl || item.coverURL || "").trim(),
-      audioURL: (item.audioURL || item.audioUrl || "").trim(),
-      audioUrl: (item.audioUrl || item.audioURL || "").trim(),
-    };
-  }
+  const playTrack = useCallback(
+    async (nextTrack: Track, list: Track[], index: number) => {
+      const audio = audioRef.current;
+      if (!audio) return;
 
-  async function playTrack(nextTrack: Track, list: Track[], index: number) {
-    const audio = audioRef.current;
-    if (!audio) return;
+      const normalizedQueue = list.map(normalizeTrack);
+      const safeIndex =
+        index >= 0 && index < normalizedQueue.length ? index : 0;
+      const selectedTrack =
+        normalizedQueue[safeIndex] || normalizeTrack(nextTrack);
+      const src = (selectedTrack.audioURL || selectedTrack.audioUrl || "").trim();
 
-    const normalizedTrack = normalizeTrack(nextTrack);
-    const normalizedQueue = list.map(normalizeTrack);
-    const src = (normalizedTrack.audioURL || normalizedTrack.audioUrl || "").trim();
+      console.log("TRACK RECEIVED:", selectedTrack);
+      console.log("AUDIO SRC RAW:", JSON.stringify(src));
 
-    console.log("TRACK RECEIVED:", normalizedTrack);
-    console.log("AUDIO SRC RAW:", JSON.stringify(src));
-
-    if (!src) {
-      console.error("Missing audio source:", normalizedTrack);
-      setIsPlaying(false);
-      return;
-    }
-
-    try {
-      countedCurrentTrackRef.current = false;
-
-      setTrack(normalizedTrack);
-      setQueue(normalizedQueue);
-      setCurrentIndex(index);
-
-      queueRef.current = normalizedQueue;
-      currentIndexRef.current = index;
-
-      setCurrentTime(0);
-      setDuration(0);
-      setShowPlayer(true);
-
-      audio.pause();
-      audio.currentTime = 0;
-      audio.removeAttribute("src");
-      audio.load();
-
-      audio.src = src;
-      audio.load();
-
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        await playPromise;
+      if (!src) {
+        console.error("Missing audio source:", selectedTrack);
+        setIsPlaying(false);
+        return;
       }
 
-      setIsPlaying(true);
-      notifyActiveSong(normalizedTrack.id);
-    } catch (error) {
-      console.error("Playback failed:", error);
-      setIsPlaying(false);
-    }
-  }
+      try {
+        countedCurrentTrackRef.current = false;
 
-  function handleNext() {
+        setTrack(selectedTrack);
+        setQueue(normalizedQueue);
+        setCurrentIndex(safeIndex);
+
+        trackRef.current = selectedTrack;
+        queueRef.current = normalizedQueue;
+        currentIndexRef.current = safeIndex;
+
+        setCurrentTime(0);
+        setDuration(0);
+        setShowPlayer(true);
+
+        audio.pause();
+        audio.currentTime = 0;
+        audio.removeAttribute("src");
+        audio.load();
+
+        audio.src = src;
+        audio.load();
+
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          await playPromise;
+        }
+
+        setIsPlaying(true);
+        notifyActiveSong(selectedTrack.id);
+      } catch (error) {
+        console.error("Playback failed:", error);
+        setIsPlaying(false);
+      }
+    },
+    [notifyActiveSong]
+  );
+
+  const handleNext = useCallback(() => {
     const list = queueRef.current;
     const index = currentIndexRef.current;
 
@@ -136,9 +151,9 @@ export default function BottomPlayer() {
 
     const nextIndex = index + 1 >= list.length ? 0 : index + 1;
     playTrack(list[nextIndex], list, nextIndex);
-  }
+  }, [playTrack]);
 
-  function handlePrev() {
+  const handlePrev = useCallback(() => {
     const audio = audioRef.current;
     const list = queueRef.current;
     const index = currentIndexRef.current;
@@ -153,11 +168,11 @@ export default function BottomPlayer() {
 
     const prevIndex = index - 1 < 0 ? list.length - 1 : index - 1;
     playTrack(list[prevIndex], list, prevIndex);
-  }
+  }, [playTrack]);
 
-  function togglePlayPause() {
+  const togglePlayPause = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio || !track) return;
+    if (!audio || !trackRef.current) return;
 
     if (audio.paused) {
       audio
@@ -174,38 +189,29 @@ export default function BottomPlayer() {
       audio.pause();
       setIsPlaying(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     const audio = new Audio();
-
     audio.preload = "auto";
     audio.volume = volume;
-
     audioRef.current = audio;
 
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime || 0);
 
+      const activeTrack = trackRef.current;
       if (
-        track?.id &&
+        activeTrack?.id &&
         !countedCurrentTrackRef.current &&
         audio.currentTime >= 5
       ) {
         countedCurrentTrackRef.current = true;
-        incrementSongPlays(track.id);
+        incrementSongPlays(activeTrack.id);
       }
     };
 
-    const onLoadedMetadata = () => {
-      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
-    };
-
-    const onDurationChange = () => {
-      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
-    };
-
-    const onCanPlay = () => {
+    const updateDuration = () => {
       setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
     };
 
@@ -249,9 +255,9 @@ export default function BottomPlayer() {
     };
 
     audio.addEventListener("timeupdate", onTimeUpdate);
-    audio.addEventListener("loadedmetadata", onLoadedMetadata);
-    audio.addEventListener("durationchange", onDurationChange);
-    audio.addEventListener("canplay", onCanPlay);
+    audio.addEventListener("loadedmetadata", updateDuration);
+    audio.addEventListener("durationchange", updateDuration);
+    audio.addEventListener("canplay", updateDuration);
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
     audio.addEventListener("ended", onEnded);
@@ -263,15 +269,15 @@ export default function BottomPlayer() {
       audio.load();
 
       audio.removeEventListener("timeupdate", onTimeUpdate);
-      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-      audio.removeEventListener("durationchange", onDurationChange);
-      audio.removeEventListener("canplay", onCanPlay);
+      audio.removeEventListener("loadedmetadata", updateDuration);
+      audio.removeEventListener("durationchange", updateDuration);
+      audio.removeEventListener("canplay", updateDuration);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
     };
-  }, [track?.id, volume]);
+  }, [playTrack, volume]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -280,13 +286,15 @@ export default function BottomPlayer() {
   }, [volume]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     function onPlayEvent(event: Event) {
       const customEvent = event as CustomEvent<PlayEventDetail>;
       const detail = customEvent.detail;
 
       console.log("Received alos:play event:", detail);
 
-      const nextTrack: Track = {
+      const nextTrack: Track = normalizeTrack({
         id: detail.id,
         title: detail.title,
         artist: detail.artist,
@@ -295,26 +303,21 @@ export default function BottomPlayer() {
         coverUrl: detail.coverUrl || detail.coverURL || "",
         audioURL: detail.audioURL || detail.audioUrl || "",
         audioUrl: detail.audioUrl || detail.audioURL || "",
-      };
+      });
 
-      const nextQueue =
-        detail.queue?.map((item) => ({
-          id: item.id,
-          title: item.title,
-          artist: item.artist,
-          genre: item.genre,
-          coverURL: item.coverURL || item.coverUrl || "",
-          coverUrl: item.coverUrl || item.coverURL || "",
-          audioURL: item.audioURL || item.audioUrl || "",
-          audioUrl: item.audioUrl || item.audioURL || "",
-        })) || [nextTrack];
+      const nextQueue = detail.queue?.length
+        ? detail.queue.map(normalizeTrack)
+        : [nextTrack];
 
       const nextIndex =
-        typeof detail.startIndex === "number" && detail.startIndex >= 0
+        typeof detail.startIndex === "number" &&
+        detail.startIndex >= 0 &&
+        detail.startIndex < nextQueue.length
           ? detail.startIndex
           : 0;
 
-      playTrack(nextTrack, nextQueue, nextIndex);
+      const selectedTrack = nextQueue[nextIndex] || nextTrack;
+      playTrack(selectedTrack, nextQueue, nextIndex);
     }
 
     window.addEventListener("alos:play", onPlayEvent as EventListener);
@@ -322,14 +325,15 @@ export default function BottomPlayer() {
     return () => {
       window.removeEventListener("alos:play", onPlayEvent as EventListener);
     };
-  }, []);
+  }, [playTrack]);
 
   useEffect(() => {
+    if (typeof window === "undefined" || !track) return;
+
     let lastY = window.scrollY;
     let ticking = false;
 
     function handleScroll() {
-      if (!track) return;
       if (ticking) return;
 
       window.requestAnimationFrame(() => {
@@ -363,7 +367,7 @@ export default function BottomPlayer() {
   }, [track, showQueue]);
 
   useEffect(() => {
-    if (!showQueue) return;
+    if (typeof window === "undefined" || !showQueue) return;
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -458,12 +462,16 @@ export default function BottomPlayer() {
                 <div className="space-y-2">
                   {nextUp.map((item, idx) => {
                     const itemCover = item.coverURL || item.coverUrl || "";
-                    const targetIndex = queue.findIndex(
-                      (_, qIndex) =>
+
+                    const targetIndex = queue.findIndex((q, qIndex) => {
+                      const qAudio = q.audioURL || q.audioUrl || "";
+                      const itemAudio = item.audioURL || item.audioUrl || "";
+                      return (
                         qIndex !== currentIndex &&
-                        queue[qIndex].id === item.id &&
-                        queue[qIndex].audioURL === item.audioURL
-                    );
+                        q.id === item.id &&
+                        qAudio === itemAudio
+                      );
+                    });
 
                     return (
                       <button
@@ -631,6 +639,7 @@ export default function BottomPlayer() {
                   max={duration || 0}
                   step={0.1}
                   value={Math.min(currentTime, duration || 0)}
+                  disabled={!duration}
                   onChange={(e) => {
                     const audio = audioRef.current;
                     const value = Number(e.target.value);
@@ -638,7 +647,7 @@ export default function BottomPlayer() {
                     audio.currentTime = value;
                     setCurrentTime(value);
                   }}
-                  className="w-full accent-white"
+                  className="w-full accent-white disabled:opacity-50"
                   aria-label="Seek"
                 />
 
