@@ -33,6 +33,7 @@ function getPlaylistTag(title: string) {
   if (t.includes("focus")) return "Artist Focus";
   if (t.includes("praise")) return "Praise Mix";
   if (t.includes("gospel")) return "Gospel";
+
   return "Collection";
 }
 
@@ -96,6 +97,10 @@ export default function PlaylistsPage() {
                         <img
                           src={p.img}
                           alt={p.title}
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = "/placeholders/default.jpg";
+                          }}
                           className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                         />
                       ) : (

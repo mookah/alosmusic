@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase-client";
 import {
   GoogleAuthProvider,
   onAuthStateChanged,
@@ -11,20 +12,14 @@ import {
   User,
 } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import {
-  doc,
-  getDoc,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 
-export default function AuthModal({
-  open,
-  onClose,
-}: {
+type AuthModalProps = {
   open: boolean;
   onClose: () => void;
-}) {
+};
+
+export default function AuthModal({ open, onClose }: AuthModalProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,6 +28,7 @@ export default function AuthModal({
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
+
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [onClose]);
@@ -136,6 +132,7 @@ export default function AuthModal({
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             className="text-lg text-white/60 hover:text-white"
           >
@@ -154,6 +151,7 @@ export default function AuthModal({
 
               <div className="mt-5 grid gap-3">
                 <button
+                  type="button"
                   onClick={() => {
                     onClose();
                     router.push("/artist/setup");
@@ -164,6 +162,7 @@ export default function AuthModal({
                 </button>
 
                 <button
+                  type="button"
                   onClick={handleSignOut}
                   className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 font-semibold transition duration-200 hover:bg-white/10"
                 >
@@ -178,6 +177,7 @@ export default function AuthModal({
               </p>
 
               <button
+                type="button"
                 onClick={handleGoogleSignIn}
                 disabled={loading}
                 className="mt-5 w-full rounded-xl bg-purple-600 py-2.5 font-semibold transition duration-200 hover:bg-purple-500 disabled:opacity-60"

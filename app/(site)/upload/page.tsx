@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase-client";
 import { uploadSongToFirebase } from "@/lib/uploadSong";
 import SiteShell from "@/components/Site/SiteShell";
 

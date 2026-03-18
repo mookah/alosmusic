@@ -92,12 +92,11 @@ export default function BottomPlayer() {
       const normalizedQueue = list.map(normalizeTrack);
       const safeIndex =
         index >= 0 && index < normalizedQueue.length ? index : 0;
+
       const selectedTrack =
         normalizedQueue[safeIndex] || normalizeTrack(nextTrack);
-      const src = (selectedTrack.audioURL || selectedTrack.audioUrl || "").trim();
 
-      console.log("TRACK RECEIVED:", selectedTrack);
-      console.log("AUDIO SRC RAW:", JSON.stringify(src));
+      const src = (selectedTrack.audioURL || selectedTrack.audioUrl || "").trim();
 
       if (!src) {
         console.error("Missing audio source:", selectedTrack);
@@ -120,20 +119,26 @@ export default function BottomPlayer() {
         setDuration(0);
         setShowPlayer(true);
 
-        audio.pause();
-        audio.currentTime = 0;
-        audio.removeAttribute("src");
-        audio.load();
+        const currentSrc = audio.currentSrc || audio.src;
 
-        audio.src = src;
-        audio.load();
+        if (!currentSrc || currentSrc !== src) {
+          audio.src = src;
+          audio.load();
+        }
+
+        audio.currentTime = 0;
 
         const playPromise = audio.play();
         if (playPromise !== undefined) {
-          await playPromise;
+          await playPromise.catch((error) => {
+            if (error instanceof DOMException && error.name === "AbortError") {
+              return;
+            }
+            console.error("Playback failed:", error);
+          });
         }
 
-        setIsPlaying(true);
+        setIsPlaying(!audio.paused);
         notifyActiveSong(selectedTrack.id);
       } catch (error) {
         console.error("Playback failed:", error);
@@ -182,6 +187,9 @@ export default function BottomPlayer() {
           setShowPlayer(true);
         })
         .catch((error) => {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return;
+          }
           console.error("Resume failed:", error);
           setIsPlaying(false);
         });
@@ -277,7 +285,7 @@ export default function BottomPlayer() {
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
     };
-  }, [playTrack, volume]);
+  }, [playTrack]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -291,8 +299,6 @@ export default function BottomPlayer() {
     function onPlayEvent(event: Event) {
       const customEvent = event as CustomEvent<PlayEventDetail>;
       const detail = customEvent.detail;
-
-      console.log("Received alos:play event:", detail);
 
       const nextTrack: Track = normalizeTrack({
         id: detail.id,
