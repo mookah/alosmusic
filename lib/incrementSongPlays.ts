@@ -6,7 +6,6 @@ export async function incrementSongPlays(songId: string) {
 
   try {
     const songRef = doc(db, "songs", songId);
-
     await updateDoc(songRef, {
       plays: increment(1),
     });
