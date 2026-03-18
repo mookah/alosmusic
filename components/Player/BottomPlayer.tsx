@@ -1,6 +1,9 @@
 "use client";
 
-import { incrementSongPlays } from "@/lib/songStats";
+import { isLiked, likeSong, unlikeSong } from "@/lib/likes";
+import { trackPlay } from "@/lib/trackPlay";
+import { auth } from "@/lib/firebase-client";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { usePathname } from "next/navigation";
 
@@ -56,7 +59,9 @@ export default function BottomPlayer() {
   const queueRef = useRef<Track[]>([]);
   const currentIndexRef = useRef(-1);
   const countedCurrentTrackRef = useRef(false);
+  const repeatOneRef = useRef(false);
 
+  const [user, setUser] = useState<User | null>(null);
   const [track, setTrack] = useState<Track | null>(null);
   const [queue, setQueue] = useState<Track[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
@@ -66,10 +71,46 @@ export default function BottomPlayer() {
   const [volume, setVolume] = useState(0.85);
   const [showPlayer, setShowPlayer] = useState(true);
   const [showQueue, setShowQueue] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [likeLoading, setLikeLoading] = useState(false);
+  const [repeatOne, setRepeatOne] = useState(false);
+
+  const userId = user?.uid || "";
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     trackRef.current = track;
   }, [track]);
+
+  useEffect(() => {
+    repeatOneRef.current = repeatOne;
+  }, [repeatOne]);
+
+  useEffect(() => {
+    async function checkLiked() {
+      if (!track?.id || !userId) {
+        setLiked(false);
+        return;
+      }
+
+      try {
+        const result = await isLiked(userId, track.id);
+        setLiked(result);
+      } catch (error) {
+        console.error("Failed to check liked state:", error);
+        setLiked(false);
+      }
+    }
+
+    checkLiked();
+  }, [track?.id, userId]);
 
   const nextUp = useMemo(() => {
     if (!queue.length || currentIndex < 0) return [];
@@ -199,23 +240,54 @@ export default function BottomPlayer() {
     }
   }, []);
 
+  async function handleToggleLike() {
+    if (!track?.id || !userId || likeLoading) return;
+
+    try {
+      setLikeLoading(true);
+
+      if (liked) {
+        await unlikeSong(userId, track.id);
+        setLiked(false);
+      } else {
+        await likeSong(userId, track.id);
+        setLiked(true);
+      }
+    } catch (error) {
+      console.error("Failed to toggle like:", error);
+    } finally {
+      setLikeLoading(false);
+    }
+  }
+
   useEffect(() => {
     const audio = new Audio();
     audio.preload = "auto";
     audio.volume = volume;
     audioRef.current = audio;
 
-    const onTimeUpdate = () => {
+    const onTimeUpdate = async () => {
       setCurrentTime(audio.currentTime || 0);
 
       const activeTrack = trackRef.current;
-      if (
-        activeTrack?.id &&
-        !countedCurrentTrackRef.current &&
-        audio.currentTime >= 5
-      ) {
-        countedCurrentTrackRef.current = true;
-        incrementSongPlays(activeTrack.id);
+      if (!activeTrack?.id || countedCurrentTrackRef.current) return;
+
+      const current = audio.currentTime || 0;
+      const total = Number.isFinite(audio.duration) ? audio.duration : 0;
+
+      const thresholdSeconds = 15;
+      const halfwayPoint = total > 0 ? total * 0.5 : Infinity;
+      const shouldCount = current >= thresholdSeconds || current >= halfwayPoint;
+
+      if (!shouldCount) return;
+
+      countedCurrentTrackRef.current = true;
+
+      try {
+        await trackPlay(activeTrack.id);
+      } catch (error) {
+        console.error("Failed to track play:", error);
+        countedCurrentTrackRef.current = false;
       }
     };
 
@@ -226,11 +298,22 @@ export default function BottomPlayer() {
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
 
-    const onEnded = () => {
+    const onEnded = async () => {
+      countedCurrentTrackRef.current = false;
+
+      if (repeatOneRef.current) {
+        audio.currentTime = 0;
+        try {
+          await audio.play();
+        } catch (error) {
+          console.error("Repeat play failed:", error);
+          setIsPlaying(false);
+        }
+        return;
+      }
+
       const list = queueRef.current;
       const index = currentIndexRef.current;
-
-      countedCurrentTrackRef.current = false;
 
       if (!list.length) {
         setIsPlaying(false);
@@ -285,7 +368,7 @@ export default function BottomPlayer() {
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
     };
-  }, [playTrack]);
+  }, [playTrack, volume]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -378,12 +461,76 @@ export default function BottomPlayer() {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setShowQueue(false);
+        return;
+      }
+
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTyping =
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        target?.isContentEditable;
+
+      if (isTyping) return;
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        togglePlayPause();
+        return;
+      }
+
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        handleNext();
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        handlePrev();
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showQueue]);
+  }, [showQueue, togglePlayPause, handleNext, handlePrev]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || showQueue) return;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTyping =
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        target?.isContentEditable;
+
+      if (isTyping) return;
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        togglePlayPause();
+        return;
+      }
+
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        handleNext();
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        handlePrev();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showQueue, togglePlayPause, handleNext, handlePrev]);
 
   if (pathname === "/auth" || pathname === "/login" || pathname === "/signup") {
     return null;
@@ -403,7 +550,7 @@ export default function BottomPlayer() {
       )}
 
       <div
-        className={`fixed bottom-4 left-1/2 z-[70] w-[95%] max-w-[980px] -translate-x-1/2 transition-all duration-300 md:bottom-5 ${
+        className={`fixed bottom-4 left-1/2 z-[70] w-[95%] max-w-[1100px] -translate-x-1/2 transition-all duration-300 md:bottom-5 ${
           showPlayer ? "translate-y-0 opacity-100" : "translate-y-24 opacity-0"
         }`}
       >
@@ -530,8 +677,8 @@ export default function BottomPlayer() {
         )}
 
         <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/80 shadow-[0_10px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
-          <div className="mx-auto flex items-center justify-between gap-3 px-4 py-3 md:gap-4 md:px-5">
-            <div className="flex min-w-0 flex-1 items-center gap-3 md:max-w-[280px]">
+          <div className="mx-auto grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-4 py-3 md:gap-4 md:px-5">
+            <div className="flex min-w-0 items-center gap-3 justify-self-start">
               <div className="relative h-14 w-14 shrink-0">
                 {isPlaying && (
                   <>
@@ -583,87 +730,86 @@ export default function BottomPlayer() {
               </div>
             </div>
 
-            <div className="flex flex-[1.4] flex-col items-center gap-2">
-              <div className="flex items-center gap-3 md:gap-4">
-                <button
-                  type="button"
-                  onClick={handlePrev}
-                  className="text-base text-white/70 transition hover:text-white md:text-lg"
-                  aria-label="Previous track"
-                  title="Previous"
-                >
-                  ⏮
-                </button>
+            <div className="flex min-w-0 items-center justify-center gap-2 md:gap-3 justify-self-center flex-wrap">
+              <button
+                type="button"
+                onClick={handlePrev}
+                className="text-base text-white/70 transition hover:text-white md:text-lg"
+                aria-label="Previous track"
+                title="Previous"
+              >
+                ⏮
+              </button>
 
-                <button
-                  type="button"
-                  onClick={togglePlayPause}
-                  className={`flex h-10 w-10 items-center justify-center rounded-full text-lg text-black transition ${
-                    isPlaying
-                      ? "bg-fuchsia-400 shadow-[0_0_18px_rgba(217,70,239,0.45)] hover:scale-105"
-                      : "bg-white hover:scale-105"
-                  }`}
-                  aria-label={isPlaying ? "Pause" : "Play"}
-                  title={isPlaying ? "Pause" : "Play"}
-                >
-                  {isPlaying ? "⏸" : "▶"}
-                </button>
+              <button
+                type="button"
+                onClick={togglePlayPause}
+                className={`flex h-10 w-10 items-center justify-center rounded-full text-lg text-black transition ${
+                  isPlaying
+                    ? "bg-fuchsia-400 shadow-[0_0_18px_rgba(217,70,239,0.45)] hover:scale-105"
+                    : "bg-white hover:scale-105"
+                }`}
+                aria-label={isPlaying ? "Pause" : "Play"}
+                title={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? "⏸" : "▶"}
+              </button>
 
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  className="text-base text-white/70 transition hover:text-white md:text-lg"
-                  aria-label="Next track"
-                  title="Next"
-                >
-                  ⏭
-                </button>
+              <button
+                type="button"
+                onClick={handleNext}
+                className="text-base text-white/70 transition hover:text-white md:text-lg"
+                aria-label="Next track"
+                title="Next"
+              >
+                ⏭
+              </button>
 
-                <button
-                  type="button"
-                  onClick={() => setShowQueue((prev) => !prev)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                    showQueue
-                      ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-white"
-                      : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.08]"
-                  }`}
-                  aria-label="Queue"
-                  title="Queue"
-                >
-                  Queue
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setRepeatOne((prev) => !prev)}
+                className={`flex items-center justify-center rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  repeatOne
+                    ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-200 shadow-[0_0_14px_rgba(217,70,239,0.22)]"
+                    : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.08]"
+                }`}
+                aria-label="Repeat current song"
+                title="Repeat current song"
+              >
+                🔁
+              </button>
 
-              <div className="flex w-full max-w-[460px] items-center gap-2 md:gap-3">
-                <span className="hidden w-10 text-right text-xs text-white/55 sm:block">
-                  {formatTime(currentTime)}
-                </span>
+              <button
+                type="button"
+                onClick={handleToggleLike}
+                disabled={likeLoading || !track || !user}
+                className={`flex items-center justify-center rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  liked
+                    ? "border-red-500/50 bg-red-500/15 text-red-200 shadow-[0_0_14px_rgba(239,68,68,0.18)]"
+                    : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.08]"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+                aria-label={liked ? "Unlike song" : "Like song"}
+                title={!user ? "Sign in to like songs" : liked ? "Unlike" : "Like"}
+              >
+                {liked ? "❤️" : "🤍"}
+              </button>
 
-                <input
-                  type="range"
-                  min={0}
-                  max={duration || 0}
-                  step={0.1}
-                  value={Math.min(currentTime, duration || 0)}
-                  disabled={!duration}
-                  onChange={(e) => {
-                    const audio = audioRef.current;
-                    const value = Number(e.target.value);
-                    if (!audio) return;
-                    audio.currentTime = value;
-                    setCurrentTime(value);
-                  }}
-                  className="w-full accent-white disabled:opacity-50"
-                  aria-label="Seek"
-                />
-
-                <span className="hidden w-10 text-xs text-white/55 sm:block">
-                  {formatTime(duration)}
-                </span>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowQueue((prev) => !prev)}
+                className={`flex items-center justify-center rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  showQueue
+                    ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-200 shadow-[0_0_14px_rgba(217,70,239,0.22)]"
+                    : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.08]"
+                }`}
+                aria-label="Queue"
+                title="Queue"
+              >
+                Queue
+              </button>
             </div>
 
-            <div className="hidden min-w-[180px] items-center justify-end gap-2 md:flex">
+            <div className="hidden min-w-[180px] items-center justify-end gap-2 justify-self-end md:flex">
               <span className="text-sm text-white/60">🔊</span>
               <input
                 type="range"
@@ -675,6 +821,36 @@ export default function BottomPlayer() {
                 className="w-24 accent-white"
                 aria-label="Volume"
               />
+            </div>
+          </div>
+
+          <div className="px-4 pb-3 md:px-5">
+            <div className="mx-auto flex w-full max-w-[460px] items-center gap-2 md:gap-3">
+              <span className="hidden w-10 text-right text-xs text-white/55 sm:block">
+                {formatTime(currentTime)}
+              </span>
+
+              <input
+                type="range"
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={Math.min(currentTime, duration || 0)}
+                disabled={!duration}
+                onChange={(e) => {
+                  const audio = audioRef.current;
+                  const value = Number(e.target.value);
+                  if (!audio) return;
+                  audio.currentTime = value;
+                  setCurrentTime(value);
+                }}
+                className="w-full accent-white disabled:opacity-50"
+                aria-label="Seek"
+              />
+
+              <span className="hidden w-10 text-xs text-white/55 sm:block">
+                {formatTime(duration)}
+              </span>
             </div>
           </div>
         </div>
