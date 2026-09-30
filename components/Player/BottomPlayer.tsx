@@ -2,6 +2,7 @@
 
 import { isLiked, likeSong, unlikeSong } from "@/lib/likes";
 import { trackPlay } from "@/lib/trackPlay";
+import { recordQualifiedStream } from "@/lib/qualifiedStream";
 import { auth } from "@/lib/firebase-client";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -59,6 +60,8 @@ export default function BottomPlayer() {
   const queueRef = useRef<Track[]>([]);
   const currentIndexRef = useRef(-1);
   const countedCurrentTrackRef = useRef(false);
+  const qualifiedCurrentTrackRef = useRef(false);
+  const listenedSecondsRef = useRef(0);
   const repeatOneRef = useRef(false);
 
   const [user, setUser] = useState<User | null>(null);
@@ -147,6 +150,8 @@ export default function BottomPlayer() {
 
       try {
         countedCurrentTrackRef.current = false;
+        qualifiedCurrentTrackRef.current = false;
+        listenedSecondsRef.current = 0;
 
         setTrack(selectedTrack);
         setQueue(normalizedQueue);
@@ -291,6 +296,34 @@ export default function BottomPlayer() {
       }
     };
 
+    const royaltyTimer = window.setInterval(async () => {
+      const activeTrack = trackRef.current;
+
+      if (!activeTrack?.id) return;
+      if (audio.paused || audio.ended) return;
+      if (qualifiedCurrentTrackRef.current) return;
+
+      listenedSecondsRef.current += 1;
+
+      if (listenedSecondsRef.current < 30) return;
+
+      qualifiedCurrentTrackRef.current = true;
+
+      try {
+        const result = await recordQualifiedStream(
+          activeTrack.id,
+          listenedSecondsRef.current
+        );
+
+        if (!result.counted && result.reason !== "cooldown") {
+          console.info("Qualified stream not counted:", result.reason);
+        }
+      } catch (error) {
+        console.error("Failed to record qualified stream:", error);
+        qualifiedCurrentTrackRef.current = false;
+      }
+    }, 1000);
+
     const updateDuration = () => {
       setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
     };
@@ -300,6 +333,8 @@ export default function BottomPlayer() {
 
     const onEnded = async () => {
       countedCurrentTrackRef.current = false;
+      qualifiedCurrentTrackRef.current = false;
+      listenedSecondsRef.current = 0;
 
       if (repeatOneRef.current) {
         audio.currentTime = 0;
@@ -355,6 +390,7 @@ export default function BottomPlayer() {
     audio.addEventListener("error", onError);
 
     return () => {
+      window.clearInterval(royaltyTimer);
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
